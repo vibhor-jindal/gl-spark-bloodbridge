@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          # Disabled on purpose: routes are declared explicitly below (one
+          # block per service, added as each service is committed) rather
+          # than auto-generated from the Eureka registry, so the route
+          # table always matches what's documented in the README.
+          enabled: false
+      routes:
+        # -----------------------------------------------------------------
+        # Route blocks are appended here one service at a time as each
+        # service is added in its own commit. Nothing to route to yet on
+        # Day 1 — auth-service, donor-service, etc. will each add their
+        # block below (see README "Delivery Timeline").
+        # -----------------------------------------------------------------
+        - id: gateway-health-check
+          uri: no-op://placeholder
+          predicates:
+            - Path=/__never_matches__
+          # Placeholder entry so `routes:` is valid YAML with at least one
+          # route before real service routes are added; removed once the
+          # first real route (auth-service) is committed.
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,gateway
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO

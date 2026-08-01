@@ -1,0 +1,33 @@
+# Maven
+target/
+*.jar
+*.war
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment / secrets — never commit real values
+.env
+*.env.local
+
+# Node / frontend (added commit 10)
+node_modules/
+dist/
+.vite/
+
+# Java
+*.class
+hs_err_pid*
