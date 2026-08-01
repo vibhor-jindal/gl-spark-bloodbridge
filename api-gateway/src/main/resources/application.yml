@@ -8,25 +8,22 @@ spring:
     gateway:
       discovery:
         locator:
-          # Disabled on purpose: routes are declared explicitly below (one
-          # block per service, added as each service is committed) rather
-          # than auto-generated from the Eureka registry, so the route
-          # table always matches what's documented in the README.
+          # Routes are declared explicitly below (one block per service,
+          # added as each service is committed) rather than auto-generated
+          # from the Eureka registry, so the route table always matches
+          # what's documented in the README.
           enabled: false
       routes:
         # -----------------------------------------------------------------
-        # Route blocks are appended here one service at a time as each
-        # service is added in its own commit. Nothing to route to yet on
-        # Day 1 — auth-service, donor-service, etc. will each add their
-        # block below (see README "Delivery Timeline").
+        # auth-service — added this commit. Open (no JWT check) since these
+        # are exactly the endpoints used to obtain a token in the first
+        # place. JWT enforcement for every OTHER route is wired in the next
+        # commit's JwtAuthFilter.
         # -----------------------------------------------------------------
-        - id: gateway-health-check
-          uri: no-op://placeholder
+        - id: auth-service
+          uri: lb://auth-service
           predicates:
-            - Path=/__never_matches__
-          # Placeholder entry so `routes:` is valid YAML with at least one
-          # route before real service routes are added; removed once the
-          # first real route (auth-service) is committed.
+            - Path=/api/auth/**
 
 eureka:
   client:
