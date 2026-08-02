@@ -45,6 +45,7 @@
         <module>auth-service</module>
         <module>donor-service</module>
         <module>request-service</module>
+        <module>matching-service</module>
     </modules>
 
     <dependencyManagement>
