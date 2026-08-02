@@ -10,13 +10,9 @@
         <version>1.0.0</version>
     </parent>
 
-    <artifactId>auth-service</artifactId>
+    <artifactId>donor-service</artifactId>
     <packaging>jar</packaging>
-    <name>Auth / Identity Service</name>
-
-    <properties>
-        <jjwt.version>0.12.5</jjwt.version>
-    </properties>
+    <name>Donor Service</name>
 
     <dependencies>
         <dependency>
@@ -34,27 +30,6 @@
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-crypto</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-api</artifactId>
-            <version>${jjwt.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-impl</artifactId>
-            <version>${jjwt.version}</version>
-            <scope>runtime</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.jsonwebtoken</groupId>
-            <artifactId>jjwt-jackson</artifactId>
-            <version>${jjwt.version}</version>
-            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>

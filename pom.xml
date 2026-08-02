@@ -43,6 +43,7 @@
         <module>eureka-server</module>
         <module>api-gateway</module>
         <module>auth-service</module>
+        <module>donor-service</module>
     </modules>
 
     <dependencyManagement>

@@ -8,22 +8,17 @@ spring:
     gateway:
       discovery:
         locator:
-          # Routes are declared explicitly below (one block per service,
-          # added as each service is committed) rather than auto-generated
-          # from the Eureka registry, so the route table always matches
-          # what's documented in the README.
           enabled: false
       routes:
-        # -----------------------------------------------------------------
-        # auth-service — added this commit. Open (no JWT check) since these
-        # are exactly the endpoints used to obtain a token in the first
-        # place. JWT enforcement for every OTHER route is wired in the next
-        # commit's JwtAuthFilter.
-        # -----------------------------------------------------------------
         - id: auth-service
           uri: lb://auth-service
           predicates:
             - Path=/api/auth/**
+
+        - id: donor-service
+          uri: lb://donor-service
+          predicates:
+            - Path=/api/donors/**
 
 eureka:
   client:
@@ -31,6 +26,10 @@ eureka:
       defaultZone: http://localhost:8761/eureka/
   instance:
     prefer-ip-address: true
+
+bloodbridge:
+  jwt:
+    secret: ${JWT_SECRET:dev-only-bloodbridge-shared-secret-change-me-32bytes-minimum}
 
 management:
   endpoints:
