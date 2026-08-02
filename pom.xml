@@ -44,6 +44,7 @@
         <module>api-gateway</module>
         <module>auth-service</module>
         <module>donor-service</module>
+        <module>request-service</module>
     </modules>
 
     <dependencyManagement>

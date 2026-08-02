@@ -20,6 +20,11 @@ spring:
           predicates:
             - Path=/api/donors/**
 
+        - id: request-service
+          uri: lb://request-service
+          predicates:
+            - Path=/api/requests/**
+
 eureka:
   client:
     service-url:
