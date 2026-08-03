@@ -1,0 +1,32 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: inventory-service
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:inventory_db}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:1629}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+bloodbridge:
+  inventory:
+    safety-threshold: ${INVENTORY_SAFETY_THRESHOLD:5}
+    expiry-cleanup-cron: ${INVENTORY_EXPIRY_CRON:0 0 2 * * *}
+
+logging:
+  level:
+    com.globallogic.bloodbridge.inventory: INFO
