@@ -17,11 +17,16 @@ import reactor.core.publisher.Mono;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class JwtAuthFilter implements GlobalFilter, Ordered {
 
     private static final List<String> OPEN_PATHS = List.of("/api/auth/");
+
+    private static final Map<String, String> ROLE_RESTRICTED_PATHS = Map.of(
+            "/api/analytics/", "ADMIN"
+    );
 
     private final SecretKey signingKey;
 
@@ -51,9 +56,16 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
                     .parseSignedClaims(token)
                     .getPayload();
 
+            String role = claims.get("role", String.class);
+
+            String requiredRole = requiredRoleFor(path);
+            if (requiredRole != null && !requiredRole.equals(role)) {
+                return forbidden(exchange);
+            }
+
             ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
                     .header("X-User-Id", claims.getSubject())
-                    .header("X-User-Role", claims.get("role", String.class))
+                    .header("X-User-Role", role)
                     .build();
 
             return chain.filter(exchange.mutate().request(mutatedRequest).build());
@@ -66,8 +78,21 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
         return OPEN_PATHS.stream().anyMatch(path::startsWith);
     }
 
+    private String requiredRoleFor(String path) {
+        return ROLE_RESTRICTED_PATHS.entrySet().stream()
+                .filter(entry -> path.startsWith(entry.getKey()))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse(null);
+    }
+
     private Mono<Void> unauthorized(ServerWebExchange exchange) {
         exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+        return exchange.getResponse().setComplete();
+    }
+
+    private Mono<Void> forbidden(ServerWebExchange exchange) {
+        exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
         return exchange.getResponse().setComplete();
     }
 

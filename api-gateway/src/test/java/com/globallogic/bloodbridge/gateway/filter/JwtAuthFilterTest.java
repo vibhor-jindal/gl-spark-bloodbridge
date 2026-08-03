@@ -59,7 +59,7 @@ class JwtAuthFilterTest {
     @Test
     @DisplayName("A protected route with a valid token is forwarded with X-User-Id and X-User-Role headers")
     void testProtectedPath_ValidToken_ForwardsUserHeaders() {
-        String token = validToken();
+        String token = validToken("DONOR");
         ServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/donors/1")
                         .header("Authorization", "Bearer " + token)
@@ -84,11 +84,40 @@ class JwtAuthFilterTest {
         verify(chain, never()).filter(any());
     }
 
-    private String validToken() {
+    @Test
+    @DisplayName("US-006 AC3: A DONOR calling the admin analytics dashboard is denied with 403")
+    void testAnalyticsPath_NonAdminRole_Returns403() {
+        String token = validToken("DONOR");
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/analytics/dashboard")
+                        .header("Authorization", "Bearer " + token)
+                        .build());
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        verify(chain, never()).filter(any());
+    }
+
+    @Test
+    @DisplayName("An ADMIN calling the analytics dashboard is forwarded normally")
+    void testAnalyticsPath_AdminRole_IsForwarded() {
+        String token = validToken("ADMIN");
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/analytics/dashboard")
+                        .header("Authorization", "Bearer " + token)
+                        .build());
+
+        filter.filter(exchange, chain).block();
+
+        verify(chain, times(1)).filter(any());
+    }
+
+    private String validToken(String role) {
         SecretKey key = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
         return Jwts.builder()
                 .subject("100")
-                .claim("role", "DONOR")
+                .claim("role", role)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + 3600_000))
                 .signWith(key)

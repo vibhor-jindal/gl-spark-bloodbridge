@@ -48,6 +48,7 @@
         <module>matching-service</module>
         <module>notification-service</module>
         <module>inventory-service</module>
+        <module>analytics-service</module>
     </modules>
 
     <dependencyManagement>

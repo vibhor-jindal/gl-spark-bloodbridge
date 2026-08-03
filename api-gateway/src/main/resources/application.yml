@@ -40,6 +40,11 @@ spring:
           predicates:
             - Path=/api/inventory/**
 
+        - id: analytics-service
+          uri: lb://analytics-service
+          predicates:
+            - Path=/api/analytics/**
+
 eureka:
   client:
     service-url:

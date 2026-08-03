@@ -3,6 +3,8 @@ package com.globallogic.bloodbridge.request.service;
 import com.globallogic.bloodbridge.request.dto.RequestCreateRequest;
 import com.globallogic.bloodbridge.request.dto.RequestResponse;
 import com.globallogic.bloodbridge.request.dto.StatusUpdateRequest;
+import com.globallogic.bloodbridge.request.event.RequestCreatedEvent;
+import com.globallogic.bloodbridge.request.event.RequestStatusChangedEvent;
 import com.globallogic.bloodbridge.request.exception.InvalidRequestStateException;
 import com.globallogic.bloodbridge.request.exception.RequestNotFoundException;
 import com.globallogic.bloodbridge.request.model.BloodRequest;
@@ -14,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -23,6 +26,7 @@ public class RequestService {
     private static final Logger log = LoggerFactory.getLogger(RequestService.class);
 
     private final RequestRepository requestRepository;
+    private final RequestEventPublisher eventPublisher;
 
     @Transactional
     public RequestResponse createRequest(Long requesterId, RequestCreateRequest dto) {
@@ -41,6 +45,16 @@ public class RequestService {
 
         BloodRequest saved = requestRepository.save(request);
         log.info("Created blood request id={} requesterId={} urgency={}", saved.getRequestId(), requesterId, saved.getUrgency());
+
+        eventPublisher.publishRequestCreated(RequestCreatedEvent.builder()
+                .requestId(saved.getRequestId())
+                .bloodGroup(saved.getBloodGroup())
+                .city(saved.getCity())
+                .urgency(saved.getUrgency().name())
+                .unitsNeeded(saved.getUnitsNeeded())
+                .createdAt(saved.getCreatedAt())
+                .build());
+
         return toResponse(saved);
     }
 
@@ -69,6 +83,8 @@ public class RequestService {
         request.setStatus(RequestStatus.CANCELLED);
         BloodRequest saved = requestRepository.save(request);
         log.info("Request id={} cancelled", requestId);
+
+        publishStatusChanged(saved);
         return toResponse(saved);
     }
 
@@ -84,6 +100,8 @@ public class RequestService {
 
         BloodRequest saved = requestRepository.save(request);
         log.info("Request id={} status updated to {}", requestId, dto.getStatus());
+
+        publishStatusChanged(saved);
         return toResponse(saved);
     }
 
@@ -95,7 +113,17 @@ public class RequestService {
         request.setStatus(RequestStatus.FULFILLED);
         BloodRequest saved = requestRepository.save(request);
         log.info("Request id={} marked FULFILLED", requestId);
+
+        publishStatusChanged(saved);
         return toResponse(saved);
+    }
+
+    private void publishStatusChanged(BloodRequest request) {
+        eventPublisher.publishStatusChanged(RequestStatusChangedEvent.builder()
+                .requestId(request.getRequestId())
+                .status(request.getStatus().name())
+                .changedAt(LocalDateTime.now())
+                .build());
     }
 
     private RequestResponse toResponse(BloodRequest request) {

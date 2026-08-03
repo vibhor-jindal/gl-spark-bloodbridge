@@ -30,6 +30,9 @@ class RequestServiceTest {
     @Mock
     private RequestRepository requestRepository;
 
+    @Mock
+    private RequestEventPublisher eventPublisher;
+
     @InjectMocks
     private RequestService requestService;
 
@@ -66,6 +69,7 @@ class RequestServiceTest {
         assertThat(response.getRequestId()).isEqualTo(1L);
         assertThat(response.getStatus()).isEqualTo(RequestStatus.PENDING);
         verify(requestRepository, times(1)).save(any(BloodRequest.class));
+        verify(eventPublisher, times(1)).publishRequestCreated(any());
     }
 
     @Test
@@ -89,7 +93,7 @@ class RequestServiceTest {
     }
 
     @Test
-    @DisplayName("US-005 AC4: Cancelling a request sets its status to CANCELLED")
+    @DisplayName("US-005 AC4: Cancelling a request sets its status to CANCELLED and publishes a status-changed event")
     void testCancelRequest() {
         when(requestRepository.findById(1L)).thenReturn(Optional.of(savedRequest));
         when(requestRepository.save(any(BloodRequest.class))).thenReturn(savedRequest);
@@ -97,6 +101,7 @@ class RequestServiceTest {
         requestService.cancelRequest(1L);
 
         assertThat(savedRequest.getStatus()).isEqualTo(RequestStatus.CANCELLED);
+        verify(eventPublisher, times(1)).publishStatusChanged(any());
     }
 
     @Test
@@ -122,6 +127,7 @@ class RequestServiceTest {
 
         assertThat(response.getStatus()).isEqualTo(RequestStatus.CONFIRMED);
         assertThat(response.getConfirmedDonorId()).isEqualTo(55L);
+        verify(eventPublisher, times(1)).publishStatusChanged(any());
     }
 
     @Test
@@ -133,5 +139,6 @@ class RequestServiceTest {
         requestService.markFulfilled(1L);
 
         assertThat(savedRequest.getStatus()).isEqualTo(RequestStatus.FULFILLED);
+        verify(eventPublisher, times(1)).publishStatusChanged(any());
     }
 }
