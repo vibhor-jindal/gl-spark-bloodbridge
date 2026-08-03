@@ -46,6 +46,7 @@
         <module>donor-service</module>
         <module>request-service</module>
         <module>matching-service</module>
+        <module>notification-service</module>
     </modules>
 
     <dependencyManagement>

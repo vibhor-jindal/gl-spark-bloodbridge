@@ -3,6 +3,8 @@ package com.globallogic.bloodbridge.matching.service;
 import com.globallogic.bloodbridge.matching.client.DonorServiceClient;
 import com.globallogic.bloodbridge.matching.client.RequestServiceClient;
 import com.globallogic.bloodbridge.matching.dto.*;
+import com.globallogic.bloodbridge.matching.event.DonorMatchedEvent;
+import com.globallogic.bloodbridge.matching.event.RequestConfirmedEvent;
 import com.globallogic.bloodbridge.matching.exception.MatchNotFoundException;
 import com.globallogic.bloodbridge.matching.exception.NoDonorsAvailableException;
 import com.globallogic.bloodbridge.matching.model.Match;
@@ -30,6 +32,7 @@ public class MatchingService {
     private final DonorSearchService donorSearchService;
     private final DonorServiceClient donorServiceClient;
     private final RequestServiceClient requestServiceClient;
+    private final MatchEventPublisher eventPublisher;
 
     @Transactional
     public MatchResponse matchDonors(Long requestId) {
@@ -50,20 +53,23 @@ public class MatchingService {
                 .toList();
 
         DonorDto bestDonor = ranked.get(0);
-        Double km = GeoUtils.distanceKm(request.getLatitude(), request.getLongitude(), bestDonor.getLatitude(), bestDonor.getLongitude());
-        double score = km != null ? GeoUtils.scoreFromDistance(km) : 1000.0;
+        Match saved = createMatch(requestId, request, bestDonor);
 
-        Match match = Match.builder()
-                .requestId(requestId)
-                .donorId(bestDonor.getDonorId())
-                .matchScore(score)
-                .responseStatus(ResponseStatus.PENDING)
-                .build();
-
-        Match saved = matchRepository.save(match);
         requestServiceClient.updateStatus(requestId, new StatusUpdateRequest("MATCHED", null));
 
-        log.info("Matched donor id={} to request id={} with score={}", bestDonor.getDonorId(), requestId, score);
+        eventPublisher.publishDonorMatched(DonorMatchedEvent.builder()
+                .requestId(requestId)
+                .donorId(bestDonor.getDonorId())
+                .donorName(bestDonor.getName())
+                .donorEmail(bestDonor.getEmail())
+                .donorPhone(bestDonor.getPhone())
+                .bloodGroup(request.getBloodGroup())
+                .hospitalName(request.getHospitalName())
+                .unitsNeeded(request.getUnitsNeeded())
+                .urgency(request.getUrgency())
+                .build());
+
+        log.info("Matched donor id={} to request id={} with score={}", bestDonor.getDonorId(), requestId, saved.getMatchScore());
         return toResponse(saved);
     }
 
@@ -77,8 +83,17 @@ public class MatchingService {
             match.setRespondedAt(LocalDateTime.now());
             Match saved = matchRepository.save(match);
 
+            RequestDto request = requestServiceClient.getRequest(requestId);
             requestServiceClient.updateStatus(requestId, new StatusUpdateRequest("CONFIRMED", responseRequest.getDonorId()));
-            donorServiceClient.updateAvailability(responseRequest.getDonorId(), new AvailabilityUpdateRequest(false));
+            DonorDto donor = donorServiceClient.updateAvailability(responseRequest.getDonorId(), new AvailabilityUpdateRequest(false));
+
+            eventPublisher.publishRequestConfirmed(RequestConfirmedEvent.builder()
+                    .requestId(requestId)
+                    .requesterId(request.getRequesterId())
+                    .donorId(donor.getDonorId())
+                    .donorName(donor.getName())
+                    .donorPhone(donor.getPhone())
+                    .build());
 
             log.info("Donor id={} accepted request id={}", responseRequest.getDonorId(), requestId);
             return toResponse(saved);
@@ -113,6 +128,25 @@ public class MatchingService {
         }
 
         DonorDto donor = nextDonor.get();
+        Match saved = createMatch(requestId, request, donor);
+
+        eventPublisher.publishDonorMatched(DonorMatchedEvent.builder()
+                .requestId(requestId)
+                .donorId(donor.getDonorId())
+                .donorName(donor.getName())
+                .donorEmail(donor.getEmail())
+                .donorPhone(donor.getPhone())
+                .bloodGroup(request.getBloodGroup())
+                .hospitalName(request.getHospitalName())
+                .unitsNeeded(request.getUnitsNeeded())
+                .urgency(request.getUrgency())
+                .build());
+
+        log.info("Next best donor id={} matched to request id={}", donor.getDonorId(), requestId);
+        return toResponse(saved);
+    }
+
+    private Match createMatch(Long requestId, RequestDto request, DonorDto donor) {
         Double km = GeoUtils.distanceKm(request.getLatitude(), request.getLongitude(), donor.getLatitude(), donor.getLongitude());
         double score = km != null ? GeoUtils.scoreFromDistance(km) : 1000.0;
 
@@ -123,9 +157,7 @@ public class MatchingService {
                 .responseStatus(ResponseStatus.PENDING)
                 .build();
 
-        Match saved = matchRepository.save(match);
-        log.info("Next best donor id={} matched to request id={}", donor.getDonorId(), requestId);
-        return toResponse(saved);
+        return matchRepository.save(match);
     }
 
     public List<MatchResponse> getMatchesForRequest(Long requestId) {

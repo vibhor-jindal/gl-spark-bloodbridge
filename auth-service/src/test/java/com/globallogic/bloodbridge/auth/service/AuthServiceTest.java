@@ -3,8 +3,10 @@ package com.globallogic.bloodbridge.auth.service;
 import com.globallogic.bloodbridge.auth.dto.AuthResponse;
 import com.globallogic.bloodbridge.auth.dto.LoginRequest;
 import com.globallogic.bloodbridge.auth.dto.RegisterRequest;
+import com.globallogic.bloodbridge.auth.dto.UserResponse;
 import com.globallogic.bloodbridge.auth.exception.DuplicateUserException;
 import com.globallogic.bloodbridge.auth.exception.InvalidCredentialsException;
+import com.globallogic.bloodbridge.auth.exception.UserNotFoundException;
 import com.globallogic.bloodbridge.auth.model.Role;
 import com.globallogic.bloodbridge.auth.model.User;
 import com.globallogic.bloodbridge.auth.repository.UserRepository;
@@ -26,12 +28,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
-/**
- * Unit tests for {@link AuthService}, written test-first (TDD).
- * Covers US-006 acceptance criteria: token issuance on valid login,
- * 401-equivalent behavior on bad credentials, duplicate-email rejection,
- * and that passwords are never persisted in plain text.
- */
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
@@ -131,5 +127,25 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> authService.login(loginRequest))
                 .isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
+    @DisplayName("US-007: Other services can look up a user's profile (e.g. email) by id for notification delivery")
+    void testGetUserById_Success() {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(savedUser));
+
+        UserResponse response = authService.getUserById(1L);
+
+        assertThat(response.getEmail()).isEqualTo("asha@example.com");
+        assertThat(response.getRole()).isEqualTo(Role.DONOR);
+    }
+
+    @Test
+    @DisplayName("Looking up an unknown user id throws UserNotFoundException")
+    void testGetUserById_NotFound() {
+        when(userRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.getUserById(99L))
+                .isInstanceOf(UserNotFoundException.class);
     }
 }
