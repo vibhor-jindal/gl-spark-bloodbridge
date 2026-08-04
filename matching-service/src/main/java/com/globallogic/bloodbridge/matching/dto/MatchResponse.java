@@ -16,6 +16,10 @@ public class MatchResponse {
     private Long matchId;
     private Long requestId;
     private Long donorId;
+    private String donorName;
+    private String donorBloodGroup;
+    private String donorCity;
+    private String donorPhone;
     private Double matchScore;
     private ResponseStatus responseStatus;
     private LocalDateTime createdAt;

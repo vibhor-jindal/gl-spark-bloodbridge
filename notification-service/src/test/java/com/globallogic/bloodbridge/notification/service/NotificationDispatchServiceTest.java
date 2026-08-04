@@ -38,10 +38,11 @@ class NotificationDispatchServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(emailChannel.getType()).thenReturn(Channel.EMAIL);
-        when(smsChannel.getType()).thenReturn(Channel.SMS);
-        when(pushChannel.getType()).thenReturn(Channel.PUSH);
+        lenient().when(emailChannel.getType()).thenReturn(Channel.EMAIL);
+        lenient().when(smsChannel.getType()).thenReturn(Channel.SMS);
+        lenient().when(pushChannel.getType()).thenReturn(Channel.PUSH);
 
+        // SMS is present in the list but must be ignored by the dispatcher.
         dispatchService = new NotificationDispatchService(
                 List.of(pushChannel, smsChannel, emailChannel), notificationLogRepository);
 
@@ -49,7 +50,7 @@ class NotificationDispatchServiceTest {
     }
 
     @Test
-    @DisplayName("US-007 AC1: A successful email dispatch logs SENT on the EMAIL channel, no fallback needed")
+    @DisplayName("Email success logs SENT on EMAIL and never uses SMS or PUSH")
     void testDispatch_EmailSucceeds_NoFallback() {
         when(emailChannel.send(any(), any(), any())).thenReturn(true);
 
@@ -63,35 +64,47 @@ class NotificationDispatchServiceTest {
     }
 
     @Test
-    @DisplayName("US-007 AC2: Email failing (even after one retry) falls back to SMS")
-    void testDispatch_EmailFailsTwice_FallsBackToSms() {
+    @DisplayName("When a real email is available, EMAIL failure marks FAILED — never fake PUSH success")
+    void testDispatch_EmailFails_DoesNotFallBackToPush() {
         when(emailChannel.send(any(), any(), any())).thenReturn(false);
-        when(smsChannel.send(any(), any(), any())).thenReturn(true);
 
         NotificationLog result = dispatchService.dispatch(1L, RecipientType.DONOR, 100L,
                 "donor@example.com", "9876543210", "subject", "message");
 
-        assertThat(result.getChannel()).isEqualTo(Channel.SMS);
-        assertThat(result.getStatus()).isEqualTo(DeliveryStatus.SENT);
+        assertThat(result.getChannel()).isEqualTo(Channel.EMAIL);
+        assertThat(result.getStatus()).isEqualTo(DeliveryStatus.FAILED);
         verify(emailChannel, times(2)).send(any(), any(), any());
+        verify(pushChannel, never()).send(any(), any(), any());
+        verify(smsChannel, never()).send(any(), any(), any());
     }
 
     @Test
-    @DisplayName("US-007: If every channel fails, the log records FAILED on the last channel attempted")
-    void testDispatch_AllChannelsFail_LogsFailed() {
-        when(emailChannel.send(any(), any(), any())).thenReturn(false);
-        when(smsChannel.send(any(), any(), any())).thenReturn(false);
-        when(pushChannel.send(any(), any(), any())).thenReturn(false);
+    @DisplayName("With no email, PUSH may be used as last-resort simulated channel")
+    void testDispatch_NoEmail_UsesPush() {
+        when(pushChannel.send(any(), any(), any())).thenReturn(true);
 
         NotificationLog result = dispatchService.dispatch(1L, RecipientType.DONOR, 100L,
-                "donor@example.com", "9876543210", "subject", "message");
+                null, "9876543210", "subject", "message");
+
+        assertThat(result.getChannel()).isEqualTo(Channel.PUSH);
+        assertThat(result.getStatus()).isEqualTo(DeliveryStatus.SENT);
+        verify(emailChannel, never()).send(any(), any(), any());
+        verify(smsChannel, never()).send(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("If email and push are unavailable, log FAILED")
+    void testDispatch_NoChannels_LogsFailed() {
+        NotificationLog result = dispatchService.dispatch(1L, RecipientType.DONOR, 100L,
+                "", null, "subject", "message");
 
         assertThat(result.getStatus()).isEqualTo(DeliveryStatus.FAILED);
-        assertThat(result.getChannel()).isEqualTo(Channel.PUSH);
+        verify(smsChannel, never()).send(any(), any(), any());
+        verify(pushChannel, never()).send(any(), any(), any());
     }
 
     @Test
-    @DisplayName("US-007 AC3: Every dispatch attempt is persisted with a delivery status and timestamp")
+    @DisplayName("Every dispatch attempt is persisted")
     void testDispatch_AlwaysPersistsLogEntry() {
         when(emailChannel.send(any(), any(), any())).thenReturn(true);
 

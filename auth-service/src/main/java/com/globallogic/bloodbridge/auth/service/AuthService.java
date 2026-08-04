@@ -7,6 +7,7 @@ import com.globallogic.bloodbridge.auth.dto.UserResponse;
 import com.globallogic.bloodbridge.auth.exception.DuplicateUserException;
 import com.globallogic.bloodbridge.auth.exception.InvalidCredentialsException;
 import com.globallogic.bloodbridge.auth.exception.UserNotFoundException;
+import com.globallogic.bloodbridge.auth.model.Role;
 import com.globallogic.bloodbridge.auth.model.User;
 import com.globallogic.bloodbridge.auth.repository.UserRepository;
 import com.globallogic.bloodbridge.auth.security.JwtService;
@@ -16,6 +17,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -62,6 +65,27 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException(userId));
 
+        return toUserResponse(user);
+    }
+
+    public List<UserResponse> listUsersByRole(Role role) {
+        return userRepository.findByRole(role).stream().map(this::toUserResponse).toList();
+    }
+
+    public List<UserResponse> listAllUsers() {
+        return userRepository.findAll().stream().map(this::toUserResponse).toList();
+    }
+
+    @Transactional
+    public void deleteUser(Long userId) {
+        if (!userRepository.existsById(userId)) {
+            throw new UserNotFoundException(userId);
+        }
+        userRepository.deleteById(userId);
+        log.info("Deleted user id={}", userId);
+    }
+
+    private UserResponse toUserResponse(User user) {
         return UserResponse.builder()
                 .userId(user.getUserId())
                 .fullName(user.getFullName())

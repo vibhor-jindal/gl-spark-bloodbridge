@@ -6,6 +6,7 @@ import com.globallogic.bloodbridge.donor.exception.DonorNotFoundException;
 import com.globallogic.bloodbridge.donor.exception.DuplicateDonorException;
 import com.globallogic.bloodbridge.donor.model.Donor;
 import com.globallogic.bloodbridge.donor.repository.DonorRepository;
+import com.globallogic.bloodbridge.donor.util.CityClusters;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +14,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -25,25 +30,45 @@ public class DonorService {
 
     @Transactional
     public DonorResponse registerDonor(Long userId, DonorRequest request) {
-        if (donorRepository.existsByPhone(request.getPhone())) {
-            throw new DuplicateDonorException(request.getPhone());
+        if (donorRepository.existsByUserId(userId)) {
+            throw DuplicateDonorException.forUser(userId);
+        }
+
+        String phone = blankToNull(request.getPhone());
+        if (phone != null && donorRepository.existsByPhone(phone)) {
+            throw new DuplicateDonorException(phone);
         }
 
         Donor donor = Donor.builder()
                 .userId(userId)
-                .name(request.getName())
-                .bloodGroup(request.getBloodGroup())
-                .phone(request.getPhone())
-                .email(request.getEmail())
-                .city(request.getCity())
+                .name(request.getName().trim())
+                .bloodGroup(request.getBloodGroup().trim())
+                .phone(phone)
+                .email(blankToNull(request.getEmail()))
+                .city(request.getCity().trim())
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
                 .isAvailable(true)
                 .build();
 
-        Donor saved = donorRepository.save(donor);
-        log.info("Registered donor id={} userId={}", saved.getDonorId(), userId);
-        return toResponse(saved);
+        try {
+            Donor saved = donorRepository.save(donor);
+            log.info("Registered donor id={} userId={}", saved.getDonorId(), userId);
+            return toResponse(saved);
+        } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+            log.warn("Donor register constraint failed for userId={}: {}", userId, ex.getMostSpecificCause().getMessage());
+            if (donorRepository.existsByUserId(userId)) {
+                throw DuplicateDonorException.forUser(userId);
+            }
+            throw new DuplicateDonorException(phone != null ? phone : "unknown");
+        }
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     public DonorResponse getDonor(Long donorId) {
@@ -52,12 +77,61 @@ public class DonorService {
         return toResponse(donor);
     }
 
+    public DonorResponse getByUserId(Long userId) {
+        Donor donor = donorRepository.findByUserId(userId)
+                .orElseThrow(() -> new DonorNotFoundException(userId));
+        return toResponse(donor);
+    }
+
+    /** Expand to nearby-cluster peers when same-city available donors are below this count. */
+    private static final int MIN_LOCAL_DONORS = 3;
+
     public List<DonorResponse> search(String bloodGroup, String city) {
-        return donorRepository.findByBloodGroupAndCityIgnoreCaseAndIsAvailableTrue(bloodGroup, city)
-                .stream()
+        // Feign/HTTP often send "B+" as "B " (+ = space in form encoding) — normalize back.
+        String group = normalizeBloodGroup(bloodGroup);
+        List<Donor> donors;
+        if (city != null && !city.isBlank()) {
+            String trimmedCity = city.trim();
+            donors = donorRepository.findByBloodGroupAndCityIgnoreCaseAndIsAvailableTrue(group, trimmedCity);
+
+            List<String> clusterCities = CityClusters.searchCities(trimmedCity);
+            // Prefer same city; if none/too few, also include nearby cities (e.g. Delhi NCR).
+            if (clusterCities.size() > 1 && donors.size() < MIN_LOCAL_DONORS) {
+                List<Donor> clusterDonors = donorRepository.findAvailableByBloodGroupAndCities(group, clusterCities);
+                donors = mergePreferringLocalCity(donors, clusterDonors, trimmedCity);
+            }
+
+            // Last resort: same blood group in any city.
+            if (donors.isEmpty()) {
+                donors = donorRepository.findByBloodGroupAndIsAvailableTrue(group);
+            }
+        } else {
+            donors = donorRepository.findByBloodGroupAndIsAvailableTrue(group);
+        }
+        return donors.stream()
                 .filter(Donor::isEligibleToDonate)
                 .map(this::toResponse)
                 .toList();
+    }
+
+    private static List<Donor> mergePreferringLocalCity(List<Donor> local, List<Donor> nearby, String requestCity) {
+        Map<Long, Donor> byId = new LinkedHashMap<>();
+        for (Donor d : local) {
+            byId.put(d.getDonorId(), d);
+        }
+        for (Donor d : nearby) {
+            byId.putIfAbsent(d.getDonorId(), d);
+        }
+        List<Donor> merged = new ArrayList<>(byId.values());
+        merged.sort(Comparator.comparing((Donor d) -> CityClusters.isSameCity(d.getCity(), requestCity) ? 0 : 1));
+        return merged;
+    }
+
+    static String normalizeBloodGroup(String bloodGroup) {
+        if (bloodGroup == null) {
+            return null;
+        }
+        return bloodGroup.trim().replace(' ', '+').toUpperCase();
     }
 
     @Transactional

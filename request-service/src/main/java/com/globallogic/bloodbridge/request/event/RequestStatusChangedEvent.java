@@ -14,5 +14,6 @@ import java.time.LocalDateTime;
 public class RequestStatusChangedEvent {
     private Long requestId;
     private String status;
+    private Long confirmedDonorId;
     private LocalDateTime changedAt;
 }

@@ -34,10 +34,33 @@ class JwtAuthFilterTest {
     }
 
     @Test
-    @DisplayName("Requests to /api/auth/** bypass JWT validation")
+    @DisplayName("Login/register bypass JWT validation")
     void testOpenPath_BypassesValidation() {
         ServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.post("/api/auth/login").build());
+
+        filter.filter(exchange, chain).block();
+
+        verify(chain, times(1)).filter(exchange);
+    }
+
+    @Test
+    @DisplayName("Protected auth user routes still require a token")
+    void testAuthUsersPath_RequiresToken() {
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/auth/users").build());
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        verify(chain, never()).filter(any());
+    }
+
+    @Test
+    @DisplayName("CORS preflight OPTIONS requests bypass JWT validation")
+    void testOptionsPreflight_BypassesValidation() {
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.options("/api/donors/1").build());
 
         filter.filter(exchange, chain).block();
 
@@ -111,6 +134,21 @@ class JwtAuthFilterTest {
         filter.filter(exchange, chain).block();
 
         verify(chain, times(1)).filter(any());
+    }
+
+    @Test
+    @DisplayName("Non-admin cannot list all users via gateway")
+    void testUsersList_NonAdmin_Returns403() {
+        String token = validToken("DONOR");
+        ServerWebExchange exchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/auth/users")
+                        .header("Authorization", "Bearer " + token)
+                        .build());
+
+        filter.filter(exchange, chain).block();
+
+        assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        verify(chain, never()).filter(any());
     }
 
     private String validToken(String role) {

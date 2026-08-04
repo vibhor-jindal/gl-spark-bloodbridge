@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
@@ -17,15 +18,13 @@ import reactor.core.publisher.Mono;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
 
 @Component
 public class JwtAuthFilter implements GlobalFilter, Ordered {
 
-    private static final List<String> OPEN_PATHS = List.of("/api/auth/");
-
-    private static final Map<String, String> ROLE_RESTRICTED_PATHS = Map.of(
-            "/api/analytics/", "ADMIN"
+    private static final List<String> OPEN_PATHS = List.of(
+            "/api/auth/register",
+            "/api/auth/login"
     );
 
     private final SecretKey signingKey;
@@ -37,8 +36,10 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
+        HttpMethod method = exchange.getRequest().getMethod();
 
-        if (isOpenPath(path)) {
+        // Browser CORS preflight has no Authorization header — must not return 401.
+        if (HttpMethod.OPTIONS.equals(method) || isOpenPath(path)) {
             return chain.filter(exchange);
         }
 
@@ -58,7 +59,7 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
 
             String role = claims.get("role", String.class);
 
-            String requiredRole = requiredRoleFor(path);
+            String requiredRole = requiredRoleFor(method, path);
             if (requiredRole != null && !requiredRole.equals(role)) {
                 return forbidden(exchange);
             }
@@ -75,15 +76,33 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
     }
 
     private boolean isOpenPath(String path) {
-        return OPEN_PATHS.stream().anyMatch(path::startsWith);
+        return OPEN_PATHS.stream().anyMatch(path::equals)
+                || path.startsWith("/api/auth/register")
+                || path.startsWith("/api/auth/login");
     }
 
-    private String requiredRoleFor(String path) {
-        return ROLE_RESTRICTED_PATHS.entrySet().stream()
-                .filter(entry -> path.startsWith(entry.getKey()))
-                .map(Map.Entry::getValue)
-                .findFirst()
-                .orElse(null);
+    private String requiredRoleFor(HttpMethod method, String path) {
+        if (path.startsWith("/api/analytics/")) {
+            return "ADMIN";
+        }
+        if (path.equals("/api/requests/all") || path.startsWith("/api/requests/all?")) {
+            return "ADMIN";
+        }
+        // Admin CRUD on a specific request (PUT/DELETE /api/requests/{id}) — not cancel/status subpaths.
+        if (path.matches("/api/requests/\\d+") && (HttpMethod.PUT.equals(method) || HttpMethod.DELETE.equals(method))) {
+            return "ADMIN";
+        }
+        if (path.startsWith("/api/auth/users") && HttpMethod.DELETE.equals(method)) {
+            return "ADMIN";
+        }
+        if (path.equals("/api/auth/users") || path.startsWith("/api/auth/users?")) {
+            // Full user listing is admin-only; Feign service calls bypass the gateway.
+            return "ADMIN";
+        }
+        if (path.equals("/api/inventory") && HttpMethod.GET.equals(method)) {
+            return "ADMIN";
+        }
+        return null;
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange) {

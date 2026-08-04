@@ -3,9 +3,11 @@ package com.globallogic.bloodbridge.notification.channel;
 import com.globallogic.bloodbridge.notification.model.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
-@Component
+/**
+ * SMS channel kept in codebase but not registered as a Spring bean —
+ * product flow is email + in-app alerts only.
+ */
 public class SmsChannel implements NotificationChannel {
 
     private static final Logger log = LoggerFactory.getLogger(SmsChannel.class);
@@ -20,7 +22,7 @@ public class SmsChannel implements NotificationChannel {
         if (recipient == null || recipient.isBlank()) {
             return false;
         }
-        log.info("[SMS-SIMULATED] To {} - {}", recipient, subject);
-        return true;
+        log.info("[SMS-DISABLED] Would have sent to {} - {}", recipient, subject);
+        return false;
     }
 }

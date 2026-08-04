@@ -21,4 +21,6 @@ public class ReserveRequest {
     @NotNull(message = "Units needed is required")
     @Min(value = 1, message = "Units needed must be greater than zero")
     private Integer unitsNeeded;
+
+    private Long batchId;
 }

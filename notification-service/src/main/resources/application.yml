@@ -19,11 +19,12 @@ spring:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
       group-id: notification-service
-      auto-offset-reset: earliest
+      auto-offset-reset: latest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: com.globallogic.bloodbridge.notification.event
+        spring.json.trusted.packages: "*"
+        spring.json.use.type.headers: false
 
   # -----------------------------------------------------------------
   # Real email delivery — free via Gmail SMTP + an App Password.
@@ -34,8 +35,8 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
+    username: ${MAIL_USERNAME:jindalvibhor183@gmail.com}
+    password: ${MAIL_PASSWORD:xyfejluumwlvwdbe}
     properties:
       mail:
         smtp:

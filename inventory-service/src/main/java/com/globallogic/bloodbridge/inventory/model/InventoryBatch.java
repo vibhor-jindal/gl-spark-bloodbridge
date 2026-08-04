@@ -24,6 +24,9 @@ public class InventoryBatch {
     @Column(nullable = false)
     private String bloodBankName;
 
+    /** Owning blood-bank user account (nullable for legacy rows). */
+    private Long ownerUserId;
+
     @NotBlank
     @Column(nullable = false)
     private String city;

@@ -8,5 +8,6 @@ package com.globallogic.bloodbridge.auth.model;
 public enum Role {
     DONOR,
     REQUESTER,
+    BLOOD_BANK,
     ADMIN
 }

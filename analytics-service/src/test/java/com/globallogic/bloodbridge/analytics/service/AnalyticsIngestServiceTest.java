@@ -71,7 +71,7 @@ class AnalyticsIngestServiceTest {
         when(requestMetricRepository.findById(1L)).thenReturn(Optional.of(metric));
 
         LocalDateTime changedAt = LocalDateTime.now();
-        ingestService.onStatusChanged(new RequestStatusChangedEvent(1L, "FULFILLED", changedAt));
+        ingestService.onStatusChanged(new RequestStatusChangedEvent(1L, "FULFILLED", null, changedAt));
 
         assertThat(metric.getStatus()).isEqualTo("FULFILLED");
         assertThat(metric.getFulfilledAt()).isEqualTo(changedAt);

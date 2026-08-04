@@ -27,7 +27,8 @@ public class JwtService {
     public JwtService(
             @Value("${bloodbridge.jwt.secret}") String secret,
             @Value("${bloodbridge.jwt.expiration-seconds:3600}") long expirationSeconds) {
-
+        // HS256 requires a key of at least 256 bits (32 bytes); the default
+        // dev secret in application.yml is padded well beyond that.
         this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMillis = expirationSeconds * 1000;
     }

@@ -6,6 +6,24 @@ spring:
     name: api-gateway
   cloud:
     gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://127.0.0.1:3000"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            exposedHeaders:
+              - Authorization
+            allowCredentials: true
+            maxAge: 3600
       discovery:
         locator:
           enabled: false
@@ -44,6 +62,11 @@ spring:
           uri: lb://analytics-service
           predicates:
             - Path=/api/analytics/**
+
+        - id: rewards-service
+          uri: lb://rewards-service
+          predicates:
+            - Path=/api/rewards/**
 
 eureka:
   client:

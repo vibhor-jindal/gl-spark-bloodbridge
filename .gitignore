@@ -22,6 +22,7 @@ Thumbs.db
 # Environment / secrets — never commit real values
 .env
 *.env.local
+scripts/local.ps1
 
 # Node / frontend (added commit 10)
 node_modules/

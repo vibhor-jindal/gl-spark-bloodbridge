@@ -13,8 +13,11 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class RequestCreatedEvent {
     private Long requestId;
+    private Long requesterId;
+    private String patientName;
     private String bloodGroup;
     private String city;
+    private String hospitalName;
     private String urgency;
     private Integer unitsNeeded;
     private LocalDateTime createdAt;

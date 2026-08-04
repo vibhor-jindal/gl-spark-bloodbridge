@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-bg text-ink font-body antialiased;
+}
+
+h1, h2, h3 {
+  @apply font-display;
+}
+
+.pulse-line {
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@keyframes pulse-draw {
+  0% { stroke-dashoffset: 240; }
+  70% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: 0; }
+}
+
+.pulse-line-animated {
+  stroke-dasharray: 240;
+  animation: pulse-draw 2.4s ease-in-out infinite;
+}
+
+.card {
+  @apply bg-card border border-border rounded-xl shadow-sm;
+}
+
+.btn-primary {
+  @apply bg-primary text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-urgent {
+  @apply bg-urgent text-white px-4 py-2 rounded-lg font-medium hover:bg-urgent-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-secondary {
+  @apply bg-white text-ink border border-border px-4 py-2 rounded-lg font-medium hover:bg-bg transition-colors;
+}
+
+.input {
+  @apply w-full border border-border rounded-lg px-3 py-2 bg-white text-ink focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary;
+}
+
+.label {
+  @apply block text-sm font-medium text-ink mb-1;
+}

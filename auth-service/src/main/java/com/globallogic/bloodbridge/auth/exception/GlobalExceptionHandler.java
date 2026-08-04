@@ -1,5 +1,6 @@
 package com.globallogic.bloodbridge.auth.exception;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -27,6 +28,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UserNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleUserNotFound(UserNotFoundException ex) {
         return build(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleDataIntegrity(DataIntegrityViolationException ex) {
+        String detail = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
+        if (detail != null && detail.contains("users_role_check")) {
+            return build(HttpStatus.BAD_REQUEST,
+                    "Invalid role for registration. Allowed roles: DONOR, REQUESTER, BLOOD_BANK, ADMIN");
+        }
+        return build(HttpStatus.CONFLICT, "Could not save user — data conflict");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

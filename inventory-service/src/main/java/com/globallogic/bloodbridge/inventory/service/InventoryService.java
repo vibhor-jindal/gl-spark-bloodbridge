@@ -6,6 +6,7 @@ import com.globallogic.bloodbridge.inventory.exception.InventoryNotFoundExceptio
 import com.globallogic.bloodbridge.inventory.model.BatchStatus;
 import com.globallogic.bloodbridge.inventory.model.InventoryBatch;
 import com.globallogic.bloodbridge.inventory.repository.InventoryBatchRepository;
+import com.globallogic.bloodbridge.inventory.util.CityClusters;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,11 +33,12 @@ public class InventoryService {
     private int safetyThreshold;
 
     @Transactional
-    public InventoryResponse addStock(InventoryRequest request) {
+    public InventoryResponse addStock(Long ownerUserId, InventoryRequest request) {
         InventoryBatch batch = InventoryBatch.builder()
                 .bloodBankName(request.getBloodBankName())
-                .city(request.getCity())
-                .bloodGroup(request.getBloodGroup())
+                .ownerUserId(ownerUserId)
+                .city(normalizeCity(request.getCity()))
+                .bloodGroup(normalizeBloodGroup(request.getBloodGroup()))
                 .unitsAvailable(request.getUnitsAvailable())
                 .collectedDate(request.getCollectedDate())
                 .expiryDate(request.getExpiryDate())
@@ -44,8 +46,8 @@ public class InventoryService {
                 .build();
 
         InventoryBatch saved = inventoryBatchRepository.save(batch);
-        log.info("Added inventory batch id={} bloodGroup={} city={} units={}",
-                saved.getBatchId(), saved.getBloodGroup(), saved.getCity(), saved.getUnitsAvailable());
+        log.info("Added inventory batch id={} bloodGroup={} city={} units={} owner={}",
+                saved.getBatchId(), saved.getBloodGroup(), saved.getCity(), saved.getUnitsAvailable(), ownerUserId);
         return toResponse(saved);
     }
 
@@ -71,26 +73,84 @@ public class InventoryService {
     }
 
     public List<InventoryResponse> search(String bloodGroup, String city) {
-        return inventoryBatchRepository
-                .findByBloodGroupAndCityIgnoreCaseAndStatusOrderByExpiryDateAsc(bloodGroup, city, BatchStatus.ACTIVE)
+        String group = normalizeBloodGroup(bloodGroup);
+        String normalizedCity = normalizeCity(city);
+        List<InventoryBatch> batches = inventoryBatchRepository
+                .findByBloodGroupAndCityIgnoreCaseAndStatusOrderByExpiryDateAsc(group, normalizedCity, BatchStatus.ACTIVE);
+        // If no exact-city stock, include nearby metro cities (Delhi NCR).
+        if (batches.isEmpty() && normalizedCity != null) {
+            List<String> cluster = CityClusters.searchCities(normalizedCity);
+            if (cluster.size() > 1) {
+                batches = inventoryBatchRepository.findActiveByBloodGroupAndCities(group, cluster, BatchStatus.ACTIVE);
+            }
+        }
+        return batches.stream().map(this::toResponse).toList();
+    }
+
+    static String normalizeBloodGroup(String bloodGroup) {
+        if (bloodGroup == null) {
+            return null;
+        }
+        return bloodGroup.trim().replace(' ', '+').toUpperCase();
+    }
+
+    static String normalizeCity(String city) {
+        if (city == null) {
+            return null;
+        }
+        return city.trim();
+    }
+
+    public List<InventoryResponse> listMine(Long ownerUserId) {
+        return inventoryBatchRepository.findByOwnerUserIdOrderByExpiryDateAsc(ownerUserId)
                 .stream()
                 .map(this::toResponse)
                 .toList();
     }
 
+    public List<InventoryResponse> listAll() {
+        return inventoryBatchRepository.findAll().stream().map(this::toResponse).toList();
+    }
+
+    @Transactional
+    public void deleteBatch(Long batchId) {
+        if (!inventoryBatchRepository.existsById(batchId)) {
+            throw new InventoryNotFoundException(batchId);
+        }
+        inventoryBatchRepository.deleteById(batchId);
+        log.info("Deleted inventory batch id={}", batchId);
+    }
+
     @Transactional
     public ReserveResponse reserveUnits(ReserveRequest request) {
-        List<InventoryBatch> batches = inventoryBatchRepository
-                .findByBloodGroupAndCityIgnoreCaseAndStatusOrderByExpiryDateAsc(
-                        request.getBloodGroup(), request.getCity(), BatchStatus.ACTIVE);
+        String bloodGroup = normalizeBloodGroup(request.getBloodGroup());
+        String city = normalizeCity(request.getCity());
+        List<InventoryBatch> batches;
+        if (request.getBatchId() != null) {
+            InventoryBatch batch = inventoryBatchRepository.findById(request.getBatchId())
+                    .orElseThrow(() -> new InventoryNotFoundException(request.getBatchId()));
+            batches = List.of(batch);
+        } else {
+            batches = inventoryBatchRepository
+                    .findByBloodGroupAndCityIgnoreCaseAndStatusOrderByExpiryDateAsc(
+                            bloodGroup, city, BatchStatus.ACTIVE);
+            if (batches.isEmpty() && city != null) {
+                List<String> cluster = CityClusters.searchCities(city);
+                if (cluster.size() > 1) {
+                    batches = inventoryBatchRepository.findActiveByBloodGroupAndCities(
+                            bloodGroup, cluster, BatchStatus.ACTIVE);
+                }
+            }
+        }
 
         int totalAvailable = batches.stream().mapToInt(InventoryBatch::getUnitsAvailable).sum();
         if (totalAvailable < request.getUnitsNeeded()) {
-            throw new InsufficientStockException(request.getBloodGroup(), request.getCity(), request.getUnitsNeeded(), totalAvailable);
+            throw new InsufficientStockException(bloodGroup, city, request.getUnitsNeeded(), totalAvailable);
         }
 
         int remainingToReserve = request.getUnitsNeeded();
         List<InventoryBatch> updated = new ArrayList<>();
+        Long firstBatchId = null;
 
         for (InventoryBatch batch : batches) {
             if (remainingToReserve <= 0) {
@@ -103,19 +163,25 @@ public class InventoryService {
             }
             remainingToReserve -= deduction;
             updated.add(batch);
+            if (firstBatchId == null) {
+                firstBatchId = batch.getBatchId();
+            }
         }
 
         inventoryBatchRepository.saveAll(updated);
 
         int remaining = totalAvailable - request.getUnitsNeeded();
         log.info("Reserved {} unit(s) of {} in {}. Remaining: {}",
-                request.getUnitsNeeded(), request.getBloodGroup(), request.getCity(), remaining);
+                request.getUnitsNeeded(), bloodGroup, city, remaining);
 
         return ReserveResponse.builder()
-                .bloodGroup(request.getBloodGroup())
-                .city(request.getCity())
+                .bloodGroup(bloodGroup)
+                .city(city)
                 .unitsReserved(request.getUnitsNeeded())
                 .remainingAvailable(remaining)
+                .batchId(firstBatchId)
+                .ownerUserId(updated.isEmpty() ? null : updated.get(0).getOwnerUserId())
+                .bloodBankName(updated.isEmpty() ? null : updated.get(0).getBloodBankName())
                 .build();
     }
 
@@ -134,8 +200,13 @@ public class InventoryService {
     }
 
     public List<LowStockAlert> getLowStockAlerts() {
+        return getLowStockAlerts(null);
+    }
+
+    public List<LowStockAlert> getLowStockAlerts(Long ownerUserId) {
         Map<String, List<InventoryBatch>> grouped = inventoryBatchRepository.findByStatus(BatchStatus.ACTIVE)
                 .stream()
+                .filter(b -> ownerUserId == null || ownerUserId.equals(b.getOwnerUserId()))
                 .collect(Collectors.groupingBy(b -> b.getBloodGroup() + "|" + b.getCity()));
 
         List<LowStockAlert> alerts = new ArrayList<>();
@@ -160,6 +231,7 @@ public class InventoryService {
         return InventoryResponse.builder()
                 .batchId(batch.getBatchId())
                 .bloodBankName(batch.getBloodBankName())
+                .ownerUserId(batch.getOwnerUserId())
                 .city(batch.getCity())
                 .bloodGroup(batch.getBloodGroup())
                 .unitsAvailable(batch.getUnitsAvailable())

@@ -18,8 +18,20 @@ public class InventoryController {
     private final InventoryService inventoryService;
 
     @PostMapping
-    public ResponseEntity<InventoryResponse> addStock(@Valid @RequestBody InventoryRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(inventoryService.addStock(request));
+    public ResponseEntity<InventoryResponse> addStock(
+            @RequestHeader(value = "X-User-Id", required = false) Long ownerUserId,
+            @Valid @RequestBody InventoryRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(inventoryService.addStock(ownerUserId, request));
+    }
+
+    @GetMapping("/mine")
+    public ResponseEntity<List<InventoryResponse>> mine(@RequestHeader("X-User-Id") Long ownerUserId) {
+        return ResponseEntity.ok(inventoryService.listMine(ownerUserId));
+    }
+
+    @GetMapping
+    public ResponseEntity<List<InventoryResponse>> listAll() {
+        return ResponseEntity.ok(inventoryService.listAll());
     }
 
     @GetMapping("/{batchId}")
@@ -41,13 +53,22 @@ public class InventoryController {
         return ResponseEntity.ok(inventoryService.updateStock(batchId, request));
     }
 
+    @DeleteMapping("/{batchId}")
+    public ResponseEntity<Void> deleteBatch(@PathVariable Long batchId) {
+        inventoryService.deleteBatch(batchId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/reserve")
     public ResponseEntity<ReserveResponse> reserveUnits(@Valid @RequestBody ReserveRequest request) {
         return ResponseEntity.ok(inventoryService.reserveUnits(request));
     }
 
     @GetMapping("/alerts")
-    public ResponseEntity<List<LowStockAlert>> getLowStockAlerts() {
-        return ResponseEntity.ok(inventoryService.getLowStockAlerts());
+    public ResponseEntity<List<LowStockAlert>> getLowStockAlerts(
+            @RequestHeader(value = "X-User-Id", required = false) Long ownerUserId,
+            @RequestParam(defaultValue = "false") boolean mineOnly) {
+        Long filter = mineOnly ? ownerUserId : null;
+        return ResponseEntity.ok(inventoryService.getLowStockAlerts(filter));
     }
 }

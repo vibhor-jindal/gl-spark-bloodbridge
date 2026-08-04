@@ -4,17 +4,15 @@ server:
 spring:
   application:
     name: auth-service
-
   datasource:
-    url: jdbc:postgresql://localhost:5432/auth_db
-    username: postgres
-    password: 1629
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:auth_db}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:1629}
     driver-class-name: org.postgresql.Driver
-
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     database-platform: org.hibernate.dialect.PostgreSQLDialect
 
 eureka:
@@ -26,8 +24,8 @@ eureka:
 
 bloodbridge:
   jwt:
-    secret: dev-only-bloodbridge-shared-secret-change-me-32bytes-minimum
-    expiration-seconds: 3600
+    secret: ${JWT_SECRET:dev-only-bloodbridge-shared-secret-change-me-32bytes-minimum}
+    expiration-seconds: ${JWT_EXPIRATION_SECONDS:3600}
 
 logging:
   level:

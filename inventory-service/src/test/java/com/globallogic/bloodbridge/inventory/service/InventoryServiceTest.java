@@ -58,7 +58,7 @@ class InventoryServiceTest {
                 LocalDate.now().minusDays(5), LocalDate.now().plusDays(30));
         when(inventoryBatchRepository.save(any(InventoryBatch.class))).thenReturn(batch);
 
-        InventoryResponse response = inventoryService.addStock(request);
+        InventoryResponse response = inventoryService.addStock(10L, request);
 
         assertThat(response.getUnitsAvailable()).isEqualTo(10);
         assertThat(response.getStatus()).isEqualTo(BatchStatus.ACTIVE);
@@ -91,7 +91,7 @@ class InventoryServiceTest {
         when(inventoryBatchRepository.findByBloodGroupAndCityIgnoreCaseAndStatusOrderByExpiryDateAsc("O+", "Delhi", BatchStatus.ACTIVE))
                 .thenReturn(List.of(batch));
 
-        ReserveResponse response = inventoryService.reserveUnits(new ReserveRequest("O+", "Delhi", 4));
+        ReserveResponse response = inventoryService.reserveUnits(new ReserveRequest("O+", "Delhi", 4, null));
 
         assertThat(response.getUnitsReserved()).isEqualTo(4);
         assertThat(response.getRemainingAvailable()).isEqualTo(6);
@@ -105,7 +105,7 @@ class InventoryServiceTest {
         when(inventoryBatchRepository.findByBloodGroupAndCityIgnoreCaseAndStatusOrderByExpiryDateAsc("O+", "Delhi", BatchStatus.ACTIVE))
                 .thenReturn(List.of(batch));
 
-        assertThatThrownBy(() -> inventoryService.reserveUnits(new ReserveRequest("O+", "Delhi", 50)))
+        assertThatThrownBy(() -> inventoryService.reserveUnits(new ReserveRequest("O+", "Delhi", 50, null)))
                 .isInstanceOf(InsufficientStockException.class);
     }
 
@@ -115,7 +115,7 @@ class InventoryServiceTest {
         when(inventoryBatchRepository.findByBloodGroupAndCityIgnoreCaseAndStatusOrderByExpiryDateAsc("O+", "Delhi", BatchStatus.ACTIVE))
                 .thenReturn(List.of(batch));
 
-        inventoryService.reserveUnits(new ReserveRequest("O+", "Delhi", 10));
+        inventoryService.reserveUnits(new ReserveRequest("O+", "Delhi", 10, null));
 
         assertThat(batch.getUnitsAvailable()).isZero();
         assertThat(batch.getStatus()).isEqualTo(BatchStatus.DEPLETED);

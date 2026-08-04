@@ -33,6 +33,12 @@ class RequestServiceTest {
     @Mock
     private RequestEventPublisher eventPublisher;
 
+    @Mock
+    private com.globallogic.bloodbridge.request.client.RewardsServiceClient rewardsServiceClient;
+
+    @Mock
+    private com.globallogic.bloodbridge.request.client.DonorServiceClient donorServiceClient;
+
     @InjectMocks
     private RequestService requestService;
 

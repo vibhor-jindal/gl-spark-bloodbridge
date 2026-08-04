@@ -18,12 +18,23 @@ public class MatchEventPublisher {
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
     public void publishDonorMatched(DonorMatchedEvent event) {
-        kafkaTemplate.send(KafkaTopicConfig.DONOR_MATCHED_TOPIC, String.valueOf(event.getRequestId()), event);
-        log.info("Published DonorMatchedEvent requestId={} donorId={}", event.getRequestId(), event.getDonorId());
+        try {
+            kafkaTemplate.send(KafkaTopicConfig.DONOR_MATCHED_TOPIC, String.valueOf(event.getRequestId()), event);
+            log.info("Published DonorMatchedEvent requestId={} donorId={}", event.getRequestId(), event.getDonorId());
+        } catch (Exception ex) {
+            // Match row must still persist even if notification publish fails.
+            log.error("Failed to publish DonorMatchedEvent requestId={} donorId={}: {}",
+                    event.getRequestId(), event.getDonorId(), ex.getMessage());
+        }
     }
 
     public void publishRequestConfirmed(RequestConfirmedEvent event) {
-        kafkaTemplate.send(KafkaTopicConfig.REQUEST_CONFIRMED_TOPIC, String.valueOf(event.getRequestId()), event);
-        log.info("Published RequestConfirmedEvent requestId={} donorId={}", event.getRequestId(), event.getDonorId());
+        try {
+            kafkaTemplate.send(KafkaTopicConfig.REQUEST_CONFIRMED_TOPIC, String.valueOf(event.getRequestId()), event);
+            log.info("Published RequestConfirmedEvent requestId={} donorId={}", event.getRequestId(), event.getDonorId());
+        } catch (Exception ex) {
+            log.error("Failed to publish RequestConfirmedEvent requestId={} donorId={}: {}",
+                    event.getRequestId(), event.getDonorId(), ex.getMessage());
+        }
     }
 }

@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 public class DonorMatchedEvent {
     private Long requestId;
     private Long donorId;
+    private Long donorUserId;
     private String donorName;
     private String donorEmail;
     private String donorPhone;

@@ -15,6 +15,7 @@ import java.time.LocalDate;
 public class InventoryResponse {
     private Long batchId;
     private String bloodBankName;
+    private Long ownerUserId;
     private String city;
     private String bloodGroup;
     private Integer unitsAvailable;

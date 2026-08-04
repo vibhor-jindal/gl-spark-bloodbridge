@@ -11,6 +11,6 @@ public interface RequestServiceClient {
     @GetMapping("/api/requests/{requestId}")
     RequestDto getRequest(@PathVariable("requestId") Long requestId);
 
-    @PatchMapping("/api/requests/{requestId}/status")
+    @PutMapping("/api/requests/{requestId}/status")
     RequestDto updateStatus(@PathVariable("requestId") Long requestId, @RequestBody StatusUpdateRequest request);
 }

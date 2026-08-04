@@ -1,0 +1,6 @@
+# Copy to local.ps1 and edit (local.ps1 is gitignored).
+$env:KAFKA_HOME = "C:\kafka_2.13-3.7.2"
+$env:DB_PASSWORD = "your-postgres-password"
+$env:DB_USER = "postgres"
+$env:DB_HOST = "localhost"
+$env:DB_PORT = "5432"

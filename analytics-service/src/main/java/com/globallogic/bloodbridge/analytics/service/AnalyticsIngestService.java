@@ -22,7 +22,13 @@ public class AnalyticsIngestService {
 
     private final RequestMetricRepository requestMetricRepository;
 
-    @KafkaListener(topics = "request-created-events", groupId = "analytics-service")
+    @KafkaListener(
+            topics = "request-created-events",
+            groupId = "analytics-service",
+            properties = {
+                    "spring.json.value.default.type=com.globallogic.bloodbridge.analytics.event.RequestCreatedEvent",
+                    "spring.json.use.type.headers=false"
+            })
     @Transactional
     public void onRequestCreated(RequestCreatedEvent event) {
         RequestMetric metric = RequestMetric.builder()
@@ -39,7 +45,13 @@ public class AnalyticsIngestService {
         log.info("Ingested RequestCreatedEvent requestId={}", event.getRequestId());
     }
 
-    @KafkaListener(topics = "donor-matched-events", groupId = "analytics-service")
+    @KafkaListener(
+            topics = "donor-matched-events",
+            groupId = "analytics-service",
+            properties = {
+                    "spring.json.value.default.type=com.globallogic.bloodbridge.analytics.event.DonorMatchedEvent",
+                    "spring.json.use.type.headers=false"
+            })
     @Transactional
     public void onDonorMatched(DonorMatchedEvent event) {
         requestMetricRepository.findById(event.getRequestId()).ifPresentOrElse(metric -> {
@@ -52,7 +64,13 @@ public class AnalyticsIngestService {
         log.info("Ingested DonorMatchedEvent requestId={}", event.getRequestId());
     }
 
-    @KafkaListener(topics = "request-status-changed-events", groupId = "analytics-service")
+    @KafkaListener(
+            topics = "request-status-changed-events",
+            groupId = "analytics-service",
+            properties = {
+                    "spring.json.value.default.type=com.globallogic.bloodbridge.analytics.event.RequestStatusChangedEvent",
+                    "spring.json.use.type.headers=false"
+            })
     @Transactional
     public void onStatusChanged(RequestStatusChangedEvent event) {
         requestMetricRepository.findById(event.getRequestId()).ifPresentOrElse(metric -> {

@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -26,44 +26,61 @@ public class NotificationDispatchService {
     public NotificationLog dispatch(Long recipientId, RecipientType recipientType, Long requestId,
                                      String email, String phone, String subject, String message) {
 
-        List<NotificationChannel> ordered = orderedChannels();
-        Map<Channel, String> contacts = Map.of(
-                Channel.EMAIL, email == null ? "" : email,
-                Channel.SMS, phone == null ? "" : phone,
-                Channel.PUSH, phone == null ? "" : phone);
+        String emailContact = email == null ? "" : email.trim();
+        String phoneContact = phone == null ? "" : phone.trim();
 
-        NotificationChannel lastAttempted = ordered.get(ordered.size() - 1);
-
-        for (NotificationChannel channel : ordered) {
-            String contact = contacts.get(channel.getType());
-            lastAttempted = channel;
-
-            boolean sent = channel.send(contact, subject, message);
-            if (!sent) {
-                sent = channel.send(contact, subject, message);
+        // Prefer real EMAIL. Never treat simulated PUSH as success when a real address is available —
+        // PUSH always "succeeds" and previously masked SMTP / empty-email failures.
+        if (looksLikeEmail(emailContact)) {
+            Optional<NotificationChannel> emailChannel = channelOf(Channel.EMAIL);
+            if (emailChannel.isEmpty()) {
+                log.warn("No EMAIL channel bean for recipientId={} requestId={}", recipientId, requestId);
+                return save(recipientId, recipientType, requestId, Channel.EMAIL, subject, message, DeliveryStatus.FAILED);
             }
 
+            boolean sent = trySend(emailChannel.get(), emailContact, subject, message);
             if (sent) {
-                return save(recipientId, recipientType, requestId, channel.getType(), subject, message, DeliveryStatus.SENT);
+                return save(recipientId, recipientType, requestId, Channel.EMAIL, subject, message, DeliveryStatus.SENT);
+            }
+
+            log.warn("EMAIL delivery failed for recipientId={} requestId={} to={} — not falling back to PUSH",
+                    recipientId, requestId, emailContact);
+            return save(recipientId, recipientType, requestId, Channel.EMAIL, subject, message, DeliveryStatus.FAILED);
+        }
+
+        // No usable email: optional PUSH only (simulated in-app log), using phone as contact if present.
+        String pushContact = !phoneContact.isBlank() ? phoneContact : emailContact;
+        Optional<NotificationChannel> pushChannel = channelOf(Channel.PUSH);
+        if (pushChannel.isPresent() && !pushContact.isBlank()) {
+            boolean sent = trySend(pushChannel.get(), pushContact, subject, message);
+            if (sent) {
+                log.info("No email for recipientId={}; recorded PUSH fallback contact={}", recipientId, pushContact);
+                return save(recipientId, recipientType, requestId, Channel.PUSH, subject, message, DeliveryStatus.SENT);
             }
         }
 
-        log.warn("All channels failed for recipientId={} requestId={}", recipientId, requestId);
-        return save(recipientId, recipientType, requestId, lastAttempted.getType(), subject, message, DeliveryStatus.FAILED);
+        log.warn("No deliverable channel for recipientId={} requestId={} (email blank/invalid)", recipientId, requestId);
+        return save(recipientId, recipientType, requestId, Channel.EMAIL, subject, message, DeliveryStatus.FAILED);
     }
 
-    private List<NotificationChannel> orderedChannels() {
-        return channels.stream()
-                .sorted((a, b) -> Integer.compare(priority(a.getType()), priority(b.getType())))
-                .toList();
+    static boolean looksLikeEmail(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        int at = value.indexOf('@');
+        return at > 0 && at < value.length() - 1 && value.indexOf('@', at + 1) < 0;
     }
 
-    private int priority(Channel channel) {
-        return switch (channel) {
-            case EMAIL -> 0;
-            case SMS -> 1;
-            case PUSH -> 2;
-        };
+    private boolean trySend(NotificationChannel channel, String contact, String subject, String message) {
+        boolean sent = channel.send(contact, subject, message);
+        if (!sent) {
+            sent = channel.send(contact, subject, message);
+        }
+        return sent;
+    }
+
+    private Optional<NotificationChannel> channelOf(Channel type) {
+        return channels.stream().filter(c -> c.getType() == type).findFirst();
     }
 
     private NotificationLog save(Long recipientId, RecipientType recipientType, Long requestId,

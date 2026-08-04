@@ -49,6 +49,7 @@
         <module>notification-service</module>
         <module>inventory-service</module>
         <module>analytics-service</module>
+        <module>rewards-service</module>
     </modules>
 
     <dependencyManagement>

@@ -54,6 +54,19 @@ public class BloodRequest {
 
     private Long confirmedDonorId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private FulfillmentSource fulfillmentSource;
+
+    private Long bloodBankUserId;
+
+    private Long reservedBatchId;
+
+    @Column(length = 12)
+    private String deliveryOtp;
+
+    private LocalDateTime otpExpiresAt;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

@@ -10,12 +10,20 @@ import java.util.List;
 @FeignClient(name = "donor-service")
 public interface DonorServiceClient {
 
-    @GetMapping("/api/donors/search")
-    List<DonorDto> searchDonors(@RequestParam("bloodGroup") String bloodGroup, @RequestParam("city") String city);
+    /**
+     * Blood group is a path segment so "+" is not decoded as a space (query-form encoding bug).
+     */
+    @GetMapping("/api/donors/search/{bloodGroup}")
+    List<DonorDto> searchDonors(
+            @PathVariable("bloodGroup") String bloodGroup,
+            @RequestParam(value = "city", required = false) String city);
 
     @GetMapping("/api/donors/{donorId}")
     DonorDto getDonor(@PathVariable("donorId") Long donorId);
 
-    @PatchMapping("/api/donors/{donorId}/availability")
+    @GetMapping("/api/donors/me")
+    DonorDto getMyDonorProfile(@RequestHeader("X-User-Id") Long userId);
+
+    @PutMapping("/api/donors/{donorId}/availability")
     DonorDto updateAvailability(@PathVariable("donorId") Long donorId, @RequestBody AvailabilityUpdateRequest request);
 }

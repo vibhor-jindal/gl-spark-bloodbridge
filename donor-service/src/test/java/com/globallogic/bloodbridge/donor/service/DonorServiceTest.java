@@ -21,6 +21,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -90,12 +91,51 @@ class DonorServiceTest {
     @DisplayName("US-003: Search returns only available donors matching blood group and city")
     void testSearch_ReturnsEligibleAvailableDonors() {
         when(donorRepository.findByBloodGroupAndCityIgnoreCaseAndIsAvailableTrue("O+", "Delhi"))
-                .thenReturn(List.of(savedDonor));
+                .thenReturn(List.of(savedDonor, savedDonor, savedDonor));
 
         List<DonorResponse> results = donorService.search("O+", "Delhi");
 
-        assertThat(results).hasSize(1);
+        assertThat(results).hasSize(3);
         assertThat(results.get(0).getBloodGroup()).isEqualTo("O+");
+        verify(donorRepository, never()).findAvailableByBloodGroupAndCities(any(), any());
+    }
+
+    @Test
+    @DisplayName("Nearby cities: when same-city donors are few, include Delhi NCR peers")
+    void testSearch_ExpandsToNearbyCitiesWhenLocalFew() {
+        Donor noidaDonor = Donor.builder()
+                .donorId(2L)
+                .userId(101L)
+                .name("Noida Donor")
+                .bloodGroup("O+")
+                .city("Noida")
+                .isAvailable(true)
+                .build();
+
+        when(donorRepository.findByBloodGroupAndCityIgnoreCaseAndIsAvailableTrue("O+", "Delhi"))
+                .thenReturn(List.of(savedDonor));
+        when(donorRepository.findAvailableByBloodGroupAndCities(eq("O+"), any()))
+                .thenReturn(List.of(savedDonor, noidaDonor));
+
+        List<DonorResponse> results = donorService.search("O+", "Delhi");
+
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).getCity()).isEqualTo("Delhi");
+        assertThat(results.get(1).getCity()).isEqualTo("Noida");
+    }
+
+    @Test
+    @DisplayName("Nearby cities: New Delhi request matches Delhi/Noida cluster donors")
+    void testSearch_NewDelhiUsesNcrCluster() {
+        when(donorRepository.findByBloodGroupAndCityIgnoreCaseAndIsAvailableTrue("O+", "New Delhi"))
+                .thenReturn(List.of());
+        when(donorRepository.findAvailableByBloodGroupAndCities(eq("O+"), any()))
+                .thenReturn(List.of(savedDonor));
+
+        List<DonorResponse> results = donorService.search("O+", "New Delhi");
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getCity()).isEqualTo("Delhi");
     }
 
     @Test

@@ -33,9 +33,8 @@ public class Donor {
     @Column(nullable = false, length = 3)
     private String bloodGroup;
 
-    @NotBlank(message = "Phone number is required")
-    @Pattern(regexp = "^[6-9]\\d{9}$", message = "Phone number must be a valid 10-digit mobile number")
-    @Column(nullable = false, unique = true, length = 10)
+    @Pattern(regexp = "^$|^[6-9]\\d{9}$", message = "Phone number must be a valid 10-digit mobile number")
+    @Column(unique = true, length = 10)
     private String phone;
 
     @Column(length = 150)

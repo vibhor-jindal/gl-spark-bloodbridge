@@ -14,4 +14,7 @@ public class ReserveResponse {
     private String city;
     private Integer unitsReserved;
     private Integer remainingAvailable;
+    private Long batchId;
+    private Long ownerUserId;
+    private String bloodBankName;
 }
