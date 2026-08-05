@@ -1,6 +1,7 @@
 package com.globallogic.bloodbridge.request.service;
 
 import com.globallogic.bloodbridge.request.config.KafkaTopicConfig;
+import com.globallogic.bloodbridge.request.event.BloodDeliveredEvent;
 import com.globallogic.bloodbridge.request.event.DeliveryOtpEvent;
 import com.globallogic.bloodbridge.request.event.RequestCreatedEvent;
 import com.globallogic.bloodbridge.request.event.RequestStatusChangedEvent;
@@ -31,5 +32,11 @@ public class RequestEventPublisher {
     public void publishDeliveryOtp(DeliveryOtpEvent event) {
         kafkaTemplate.send(KafkaTopicConfig.DELIVERY_OTP_TOPIC, String.valueOf(event.getRequestId()), event);
         log.info("Published DeliveryOtpEvent requestId={}", event.getRequestId());
+    }
+
+    public void publishBloodDelivered(BloodDeliveredEvent event) {
+        kafkaTemplate.send(KafkaTopicConfig.BLOOD_DELIVERED_TOPIC, String.valueOf(event.getRequestId()), event);
+        log.info("Published BloodDeliveredEvent requestId={} requesterId={}",
+                event.getRequestId(), event.getRequesterId());
     }
 }

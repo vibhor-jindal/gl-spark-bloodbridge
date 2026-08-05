@@ -1,11 +1,13 @@
 package com.globallogic.bloodbridge.request.service;
 
+import com.globallogic.bloodbridge.request.dto.DonorDto;
 import com.globallogic.bloodbridge.request.dto.RequestCreateRequest;
 import com.globallogic.bloodbridge.request.dto.RequestResponse;
 import com.globallogic.bloodbridge.request.dto.StatusUpdateRequest;
 import com.globallogic.bloodbridge.request.exception.InvalidRequestStateException;
 import com.globallogic.bloodbridge.request.exception.RequestNotFoundException;
 import com.globallogic.bloodbridge.request.model.BloodRequest;
+import com.globallogic.bloodbridge.request.model.FulfillmentSource;
 import com.globallogic.bloodbridge.request.model.RequestStatus;
 import com.globallogic.bloodbridge.request.model.Urgency;
 import com.globallogic.bloodbridge.request.repository.RequestRepository;
@@ -146,5 +148,68 @@ class RequestServiceTest {
 
         assertThat(savedRequest.getStatus()).isEqualTo(RequestStatus.FULFILLED);
         verify(eventPublisher, times(1)).publishStatusChanged(any());
+        verify(eventPublisher, times(1)).publishBloodDelivered(any());
+    }
+
+    @Test
+    @DisplayName("Requester cannot start delivery — only confirmed donor or reserving bank")
+    void testStartDelivery_RequesterRejected() {
+        savedRequest.setStatus(RequestStatus.CONFIRMED);
+        savedRequest.setConfirmedDonorId(55L);
+        savedRequest.setFulfillmentSource(FulfillmentSource.DONOR);
+        when(requestRepository.findById(1L)).thenReturn(Optional.of(savedRequest));
+
+        assertThatThrownBy(() -> requestService.startDelivery(1L, 100L, "REQUESTER"))
+                .isInstanceOf(InvalidRequestStateException.class)
+                .hasMessageContaining("Only the reserving blood bank or confirmed donor can start delivery");
+
+        verify(requestRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Confirmed donor can start delivery")
+    void testStartDelivery_ConfirmedDonorAllowed() {
+        savedRequest.setStatus(RequestStatus.CONFIRMED);
+        savedRequest.setConfirmedDonorId(55L);
+        savedRequest.setFulfillmentSource(FulfillmentSource.DONOR);
+        when(requestRepository.findById(1L)).thenReturn(Optional.of(savedRequest));
+        when(requestRepository.save(any(BloodRequest.class))).thenReturn(savedRequest);
+        when(donorServiceClient.getDonor(55L)).thenReturn(new DonorDto(55L, 200L, "Donor"));
+
+        RequestResponse response = requestService.startDelivery(1L, 200L, "DONOR");
+
+        assertThat(response.getStatus()).isEqualTo(RequestStatus.OUT_FOR_DELIVERY);
+        verify(eventPublisher, times(1)).publishDeliveryOtp(any());
+        verify(eventPublisher, times(1)).publishStatusChanged(any());
+    }
+
+    @Test
+    @DisplayName("Reserving blood bank can start delivery")
+    void testStartDelivery_BloodBankAllowed() {
+        savedRequest.setStatus(RequestStatus.BANK_RESERVED);
+        savedRequest.setBloodBankUserId(300L);
+        savedRequest.setFulfillmentSource(FulfillmentSource.BLOOD_BANK);
+        when(requestRepository.findById(1L)).thenReturn(Optional.of(savedRequest));
+        when(requestRepository.save(any(BloodRequest.class))).thenReturn(savedRequest);
+
+        RequestResponse response = requestService.startDelivery(1L, 300L, "BLOOD_BANK");
+
+        assertThat(response.getStatus()).isEqualTo(RequestStatus.OUT_FOR_DELIVERY);
+        verify(eventPublisher, times(1)).publishDeliveryOtp(any());
+    }
+
+    @Test
+    @DisplayName("Wrong blood bank cannot start delivery")
+    void testStartDelivery_WrongBankRejected() {
+        savedRequest.setStatus(RequestStatus.BANK_RESERVED);
+        savedRequest.setBloodBankUserId(300L);
+        savedRequest.setFulfillmentSource(FulfillmentSource.BLOOD_BANK);
+        when(requestRepository.findById(1L)).thenReturn(Optional.of(savedRequest));
+
+        assertThatThrownBy(() -> requestService.startDelivery(1L, 999L, "BLOOD_BANK"))
+                .isInstanceOf(InvalidRequestStateException.class)
+                .hasMessageContaining("Only the reserving blood bank or confirmed donor can start delivery");
+
+        verify(requestRepository, never()).save(any());
     }
 }

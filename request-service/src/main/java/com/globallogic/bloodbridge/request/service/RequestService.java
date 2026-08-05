@@ -3,6 +3,7 @@ package com.globallogic.bloodbridge.request.service;
 import com.globallogic.bloodbridge.request.client.DonorServiceClient;
 import com.globallogic.bloodbridge.request.client.RewardsServiceClient;
 import com.globallogic.bloodbridge.request.dto.*;
+import com.globallogic.bloodbridge.request.event.BloodDeliveredEvent;
 import com.globallogic.bloodbridge.request.event.DeliveryOtpEvent;
 import com.globallogic.bloodbridge.request.event.RequestCreatedEvent;
 import com.globallogic.bloodbridge.request.event.RequestStatusChangedEvent;
@@ -132,6 +133,7 @@ public class RequestService {
         BloodRequest saved = requestRepository.save(request);
         publishStatusChanged(saved);
         if (saved.getStatus() == RequestStatus.FULFILLED) {
+            publishBloodDelivered(saved);
             creditDonorRewards(saved);
         }
         return toResponse(saved);
@@ -167,17 +169,27 @@ public class RequestService {
         return toResponse(saved);
     }
 
+    /**
+     * Start delivery after CONFIRMED (donor) or BANK_RESERVED (blood bank).
+     * Authorized for: ADMIN, the reserving blood-bank user, or the confirmed donor
+     * (matched via donor-service: confirmedDonorId → donor.userId == X-User-Id).
+     * Requesters are never allowed.
+     */
     @Transactional
-    public RequestResponse startDelivery(Long requestId) {
+    public RequestResponse startDelivery(Long requestId, Long userId, String role) {
         BloodRequest request = find(requestId);
         if (request.getStatus() != RequestStatus.CONFIRMED && request.getStatus() != RequestStatus.BANK_RESERVED) {
             throw new InvalidRequestStateException("Delivery can start only after donor confirm or blood-bank reserve");
+        }
+        if (!canControlDelivery(request, userId, role)) {
+            throw new InvalidRequestStateException(
+                    "Only the reserving blood bank or confirmed donor can start delivery");
         }
 
         request.setStatus(RequestStatus.OUT_FOR_DELIVERY);
         BloodRequest saved = issueDeliveryOtp(request);
         publishStatusChanged(saved);
-        log.info("Delivery started for request id={} — OTP emailed to requester", requestId);
+        log.info("Delivery started for request id={} by userId={} — OTP emailed to requester", requestId, userId);
         return toResponse(saved);
     }
 
@@ -192,7 +204,7 @@ public class RequestService {
         if (request.getStatus() != RequestStatus.OUT_FOR_DELIVERY) {
             throw new InvalidRequestStateException("Restart delivery is only allowed while out for delivery");
         }
-        if (!canRestartDelivery(request, userId, role)) {
+        if (!canControlDelivery(request, userId, role)) {
             throw new InvalidRequestStateException("Only the reserving blood bank or confirmed donor can restart delivery");
         }
         if (!isOtpExpired(request)) {
@@ -204,11 +216,20 @@ public class RequestService {
         return toResponse(saved);
     }
 
-    private boolean canRestartDelivery(BloodRequest request, Long userId, String role) {
+    /**
+     * Same auth for start-delivery and restart-delivery:
+     * ADMIN, reserving blood bank (bloodBankUserId == X-User-Id), or confirmed donor
+     * (donor.userId == X-User-Id). Never the requester.
+     */
+    private boolean canControlDelivery(BloodRequest request, Long userId, String role) {
         if (role != null && "ADMIN".equalsIgnoreCase(role.trim())) {
             return true;
         }
         if (userId == null) {
+            return false;
+        }
+        // Explicitly reject requesters even if they somehow match another id field
+        if (role != null && "REQUESTER".equalsIgnoreCase(role.trim())) {
             return false;
         }
 
@@ -229,7 +250,7 @@ public class RequestService {
             DonorDto donor = donorServiceClient.getDonor(confirmedDonorId);
             return donor != null && donor.getUserId() != null && donor.getUserId().equals(userId);
         } catch (Exception ex) {
-            log.warn("Could not resolve donor id={} for restart auth: {}", confirmedDonorId, ex.getMessage());
+            log.warn("Could not resolve donor id={} for delivery auth: {}", confirmedDonorId, ex.getMessage());
             return false;
         }
     }
@@ -279,6 +300,7 @@ public class RequestService {
         request.setOtpExpiresAt(null);
         BloodRequest saved = requestRepository.save(request);
         publishStatusChanged(saved);
+        publishBloodDelivered(saved);
         creditDonorRewards(saved);
         log.info("Request id={} fulfilled via OTP confirmation", requestId);
         return toResponse(saved);
@@ -292,6 +314,7 @@ public class RequestService {
         request.setOtpExpiresAt(null);
         BloodRequest saved = requestRepository.save(request);
         publishStatusChanged(saved);
+        publishBloodDelivered(saved);
         creditDonorRewards(saved);
         return toResponse(saved);
     }
@@ -299,6 +322,7 @@ public class RequestService {
     @Transactional
     public RequestResponse adminUpdate(Long requestId, AdminRequestUpdate dto) {
         BloodRequest request = find(requestId);
+        RequestStatus previousStatus = request.getStatus();
         if (dto.getPatientName() != null) request.setPatientName(dto.getPatientName());
         if (dto.getBloodGroup() != null) request.setBloodGroup(dto.getBloodGroup());
         if (dto.getUnitsNeeded() != null) request.setUnitsNeeded(dto.getUnitsNeeded());
@@ -309,6 +333,10 @@ public class RequestService {
         if (dto.getConfirmedDonorId() != null) request.setConfirmedDonorId(dto.getConfirmedDonorId());
         BloodRequest saved = requestRepository.save(request);
         publishStatusChanged(saved);
+        if (saved.getStatus() == RequestStatus.FULFILLED && previousStatus != RequestStatus.FULFILLED) {
+            publishBloodDelivered(saved);
+            creditDonorRewards(saved);
+        }
         return toResponse(saved);
     }
 
@@ -332,6 +360,35 @@ public class RequestService {
                 .status(request.getStatus().name())
                 .confirmedDonorId(request.getConfirmedDonorId())
                 .changedAt(LocalDateTime.now())
+                .build());
+    }
+
+    private void publishBloodDelivered(BloodRequest request) {
+        String donorName = null;
+        if (request.getConfirmedDonorId() != null) {
+            try {
+                DonorDto donor = donorServiceClient.getDonor(request.getConfirmedDonorId());
+                if (donor != null && donor.getName() != null && !donor.getName().isBlank()) {
+                    donorName = donor.getName().trim();
+                }
+            } catch (Exception ex) {
+                log.warn("Could not resolve donor name for delivered event requestId={}: {}",
+                        request.getRequestId(), ex.getMessage());
+            }
+        }
+
+        eventPublisher.publishBloodDelivered(BloodDeliveredEvent.builder()
+                .requestId(request.getRequestId())
+                .requesterId(request.getRequesterId())
+                .patientName(request.getPatientName())
+                .hospitalName(request.getHospitalName())
+                .bloodGroup(request.getBloodGroup())
+                .unitsNeeded(request.getUnitsNeeded())
+                .fulfillmentSource(request.getFulfillmentSource() != null
+                        ? request.getFulfillmentSource().name()
+                        : null)
+                .donorName(donorName)
+                .deliveredAt(LocalDateTime.now())
                 .build());
     }
 

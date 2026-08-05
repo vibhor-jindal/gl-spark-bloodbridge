@@ -79,8 +79,11 @@ public class RequestController {
     }
 
     @PostMapping("/{requestId}/start-delivery")
-    public ResponseEntity<RequestResponse> startDelivery(@PathVariable Long requestId) {
-        return ResponseEntity.ok(requestService.startDelivery(requestId));
+    public ResponseEntity<RequestResponse> startDelivery(
+            @PathVariable Long requestId,
+            @RequestHeader("X-User-Id") Long userId,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        return ResponseEntity.ok(requestService.startDelivery(requestId, userId, role));
     }
 
     /** Regenerate OTP after expiry while still OUT_FOR_DELIVERY (bank owner, confirmed donor, or admin). */

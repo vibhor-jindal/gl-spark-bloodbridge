@@ -2,6 +2,7 @@ package com.globallogic.bloodbridge.notification.service;
 
 import com.globallogic.bloodbridge.notification.client.AuthServiceClient;
 import com.globallogic.bloodbridge.notification.dto.UserDto;
+import com.globallogic.bloodbridge.notification.event.BloodDeliveredEvent;
 import com.globallogic.bloodbridge.notification.event.DeliveryOtpEvent;
 import com.globallogic.bloodbridge.notification.event.DonorMatchedEvent;
 import com.globallogic.bloodbridge.notification.event.RequestConfirmedEvent;
@@ -115,14 +116,28 @@ public class NotificationEventListener {
                     "spring.json.use.type.headers=false"
             })
     public void onRequestConfirmed(RequestConfirmedEvent event) {
-        log.info("Consumed RequestConfirmedEvent requestId={} donorId={}", event.getRequestId(), event.getDonorId());
+        log.info("Consumed RequestConfirmedEvent requestId={} donorId={} requesterId={}",
+                event.getRequestId(), event.getDonorId(), event.getRequesterId());
 
+        String donorLabel = (event.getDonorName() != null && !event.getDonorName().isBlank())
+                ? event.getDonorName().trim()
+                : ("donor #" + event.getDonorId());
         String email = resolveEmail(null, event.getRequesterId());
-        String subject = "A donor has confirmed for your blood request";
-        String message = "Good news! " + event.getDonorName()
-                + " has confirmed for your blood request #" + event.getRequestId()
+        String subject = "A donor accepted your blood request";
+        String message = "Good news! " + donorLabel
+                + " has accepted your blood request #" + event.getRequestId()
+                + ". You can contact them if needed"
+                + (event.getDonorPhone() != null && !event.getDonorPhone().isBlank()
+                        ? (" at " + event.getDonorPhone().trim())
+                        : "")
                 + ". Delivery will start shortly — watch for your OTP email.";
 
+        if (!NotificationDispatchService.looksLikeEmail(email)) {
+            log.warn("No valid requester email for request-confirmed requestId={} requesterId={} — EMAIL only, not PUSH",
+                    event.getRequestId(), event.getRequesterId());
+        }
+
+        // EMAIL when auth has a valid address; dispatch never fakes PUSH success over a real email failure.
         dispatchService.dispatch(event.getRequesterId(), RecipientType.REQUESTER, event.getRequestId(),
                 email, null, subject, message);
     }
@@ -154,5 +169,49 @@ public class NotificationEventListener {
 
         dispatchService.dispatch(event.getRequesterId(), RecipientType.REQUESTER, event.getRequestId(),
                 email, null, subject, message);
+    }
+
+    @KafkaListener(
+            topics = "blood-delivered-events",
+            groupId = "notification-service",
+            properties = {
+                    "spring.json.value.default.type=com.globallogic.bloodbridge.notification.event.BloodDeliveredEvent",
+                    "spring.json.use.type.headers=false"
+            })
+    public void onBloodDelivered(BloodDeliveredEvent event) {
+        log.info("Consumed BloodDeliveredEvent requestId={} requesterId={}",
+                event.getRequestId(), event.getRequesterId());
+
+        String email = resolveEmail(null, event.getRequesterId());
+        if (!NotificationDispatchService.looksLikeEmail(email)) {
+            log.warn("No valid requester email for blood-delivered requestId={} requesterId={} — EMAIL only, not PUSH",
+                    event.getRequestId(), event.getRequesterId());
+        }
+
+        String subject = "Blood delivered for your request #" + event.getRequestId();
+        StringBuilder message = new StringBuilder();
+        message.append("Blood has been delivered for your request #").append(event.getRequestId()).append(".\n\n");
+        if (event.getPatientName() != null && !event.getPatientName().isBlank()) {
+            message.append("Patient: ").append(event.getPatientName()).append("\n");
+        }
+        if (event.getBloodGroup() != null && !event.getBloodGroup().isBlank()) {
+            message.append("Blood group: ").append(event.getBloodGroup());
+            if (event.getUnitsNeeded() != null) {
+                message.append(" × ").append(event.getUnitsNeeded()).append(" unit(s)");
+            }
+            message.append("\n");
+        }
+        if (event.getHospitalName() != null && !event.getHospitalName().isBlank()) {
+            message.append("Hospital: ").append(event.getHospitalName()).append("\n");
+        }
+        if (event.getDonorName() != null && !event.getDonorName().isBlank()) {
+            message.append("Donor: ").append(event.getDonorName().trim()).append("\n");
+        } else if (event.getFulfillmentSource() != null && !event.getFulfillmentSource().isBlank()) {
+            message.append("Fulfilled via: ").append(event.getFulfillmentSource().replace('_', ' ')).append("\n");
+        }
+        message.append("\nYour request is now marked as fulfilled. Thank you for using BloodBridge.");
+
+        dispatchService.dispatch(event.getRequesterId(), RecipientType.REQUESTER, event.getRequestId(),
+                email, null, subject, message.toString());
     }
 }

@@ -224,7 +224,9 @@ export default function TrackRequest() {
           )}
 
           {request.status === "CONFIRMED" &&
-            (user?.role === "DONOR" || user?.role === "REQUESTER") && (
+            user?.role === "DONOR" &&
+            myDonorId != null &&
+            Number(myDonorId) === Number(request.confirmedDonorId) && (
               <button
                 onClick={() =>
                   run(
@@ -237,6 +239,15 @@ export default function TrackRequest() {
               >
                 Start delivery (email OTP)
               </button>
+            )}
+
+          {request.status === "CONFIRMED" &&
+            user != null &&
+            Number(user.userId) === Number(request.requesterId) && (
+              <p className="text-sm text-primary w-full mt-2">
+                Your donor is confirmed. When they start delivery, check your email for the OTP
+                (also shown on My Requests).
+              </p>
             )}
 
           {request.status === "BANK_RESERVED" &&

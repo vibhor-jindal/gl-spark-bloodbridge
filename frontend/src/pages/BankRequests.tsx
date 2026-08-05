@@ -210,7 +210,10 @@ export default function BankRequests() {
               key={r.requestId}
               r={r}
               busy={busy}
-              showStart
+              showStart={
+                user?.role === "BLOOD_BANK" &&
+                Number(r.bloodBankUserId) === Number(user.userId)
+              }
               onStartDelivery={() => startDelivery(r.requestId)}
             />
           ))}
