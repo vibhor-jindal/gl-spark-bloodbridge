@@ -31,7 +31,13 @@ export default function MyRequests() {
   const [message, setMessage] = useState("");
 
   async function load() {
-    setRequests(await requestApi.mine());
+    try {
+      setRequests(await requestApi.mine());
+      setError("");
+    } catch (err: any) {
+      // Keep prior rows if a poll fails; surface why the list looks empty.
+      setError(err.response?.data?.error || err.response?.data?.message || "Could not load your requests");
+    }
   }
 
   useEffect(() => {

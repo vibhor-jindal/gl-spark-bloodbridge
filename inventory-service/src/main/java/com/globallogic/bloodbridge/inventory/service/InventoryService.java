@@ -56,13 +56,21 @@ public class InventoryService {
         InventoryBatch batch = inventoryBatchRepository.findById(batchId)
                 .orElseThrow(() -> new InventoryNotFoundException(batchId));
 
-        batch.setUnitsAvailable(request.getUnitsAvailable());
-        if (request.getUnitsAvailable() == 0 && batch.getStatus() == BatchStatus.ACTIVE) {
+        int units = request.getUnitsAvailable();
+        batch.setUnitsAvailable(units);
+
+        // 0 units → DEPLETED. units > 0 and not past expiry → ACTIVE (reactivates DEPLETED).
+        // Past-expiry batches stay/become EXPIRED even if units are restored.
+        if (units == 0) {
             batch.setStatus(BatchStatus.DEPLETED);
+        } else if (batch.getExpiryDate() != null && batch.getExpiryDate().isBefore(LocalDate.now())) {
+            batch.setStatus(BatchStatus.EXPIRED);
+        } else {
+            batch.setStatus(BatchStatus.ACTIVE);
         }
 
         InventoryBatch saved = inventoryBatchRepository.save(batch);
-        log.info("Updated inventory batch id={} to {} units", batchId, request.getUnitsAvailable());
+        log.info("Updated inventory batch id={} to {} units status={}", batchId, units, saved.getStatus());
         return toResponse(saved);
     }
 

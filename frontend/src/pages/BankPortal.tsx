@@ -1,10 +1,31 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useState } from "react";
 import { inventoryApi } from "../api/inventoryApi";
 import { Field, PageHeader, SelectInput, TextInput } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import { BloodGroup, InventoryResponse, LowStockAlert } from "../types";
 
 const bloodGroups: BloodGroup[] = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+
+function parseUnits(raw: string): { ok: true; value: number } | { ok: false; error: string } {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    return { ok: false, error: "Enter a number of units" };
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    return { ok: false, error: "Units must be a whole number (digits only)" };
+  }
+  const value = Number(trimmed);
+  if (!Number.isInteger(value) || value < 0) {
+    return { ok: false, error: "Units cannot be negative" };
+  }
+  return { ok: true, value };
+}
+
+function apiErrorMessage(err: any, fallback: string): string {
+  return err.response?.data?.error
+    || err.response?.data?.fieldErrors?.unitsAvailable
+    || fallback;
+}
 
 export default function BankPortal() {
   const { user } = useAuth();
@@ -20,13 +41,23 @@ export default function BankPortal() {
   const [alerts, setAlerts] = useState<LowStockAlert[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [unitDrafts, setUnitDrafts] = useState<Record<number, string>>({});
+  const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
 
   async function load() {
     try {
-      setMine(await inventoryApi.mine());
+      const batches = await inventoryApi.mine();
+      setMine(batches);
+      setUnitDrafts((prev) => {
+        const next: Record<number, string> = {};
+        for (const b of batches) {
+          next[b.batchId] = prev[b.batchId] ?? String(b.unitsAvailable);
+        }
+        return next;
+      });
       setAlerts(await inventoryApi.alerts(true));
     } catch (err: any) {
-      setError(err.response?.data?.error || "Could not load inventory");
+      setError(apiErrorMessage(err, "Could not load inventory"));
     }
   }
 
@@ -38,16 +69,38 @@ export default function BankPortal() {
     setForm((f) => ({ ...f, [field]: value }));
   }
 
+  function onUnitsKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    // Block letters / symbols that type="number" still allows (e, E, +, -)
+    if (["e", "E", "+", "-", "."].includes(e.key)) {
+      e.preventDefault();
+    }
+  }
+
+  function onUnitsChange(value: string, apply: (v: string) => void) {
+    if (value === "" || /^\d+$/.test(value)) {
+      apply(value);
+    }
+  }
+
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
     setMessage("");
     setError("");
+    const parsed = parseUnits(form.unitsAvailable);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+    if (parsed.value < 1) {
+      setError("Add at least 1 unit when creating stock");
+      return;
+    }
     try {
       await inventoryApi.add({
         bloodBankName: form.bloodBankName,
         city: form.city,
         bloodGroup: form.bloodGroup as BloodGroup,
-        unitsAvailable: Number(form.unitsAvailable),
+        unitsAvailable: parsed.value,
         collectedDate: form.collectedDate,
         expiryDate: form.expiryDate
       });
@@ -55,18 +108,54 @@ export default function BankPortal() {
       setForm((f) => ({ ...f, bloodGroup: "", unitsAvailable: "", collectedDate: "", expiryDate: "" }));
       await load();
     } catch (err: any) {
-      setError(err.response?.data?.error || "Could not add stock");
+      setError(apiErrorMessage(err, "Could not add stock"));
     }
   }
 
   async function handleDelete(batchId: number) {
-    await inventoryApi.remove(batchId);
-    await load();
+    setMessage("");
+    setError("");
+    try {
+      await inventoryApi.remove(batchId);
+      setRowErrors((prev) => {
+        const next = { ...prev };
+        delete next[batchId];
+        return next;
+      });
+      await load();
+    } catch (err: any) {
+      setError(apiErrorMessage(err, "Could not delete batch"));
+    }
   }
 
-  async function handleUpdate(batchId: number, units: number) {
-    await inventoryApi.update(batchId, units);
-    await load();
+  async function handleUpdate(batchId: number) {
+    setMessage("");
+    setError("");
+    setRowErrors((prev) => ({ ...prev, [batchId]: "" }));
+
+    const raw = unitDrafts[batchId] ?? "";
+    const parsed = parseUnits(raw);
+    if (!parsed.ok) {
+      setRowErrors((prev) => ({ ...prev, [batchId]: parsed.error }));
+      return;
+    }
+
+    try {
+      const updated = await inventoryApi.update(batchId, parsed.value);
+      setUnitDrafts((prev) => ({ ...prev, [batchId]: String(updated.unitsAvailable) }));
+      if (updated.status === "ACTIVE" && parsed.value > 0) {
+        setMessage(`Batch #${batchId} updated to ${parsed.value} unit(s) and is ACTIVE.`);
+      } else if (updated.status === "DEPLETED") {
+        setMessage(`Batch #${batchId} set to 0 units (DEPLETED). Enter units > 0 and Update to reactivate.`);
+      } else {
+        setMessage(`Batch #${batchId} updated to ${parsed.value} unit(s) (${updated.status}).`);
+      }
+      await load();
+    } catch (err: any) {
+      const msg = apiErrorMessage(err, "Could not update units");
+      setRowErrors((prev) => ({ ...prev, [batchId]: msg }));
+      setError(msg);
+    }
   }
 
   return (
@@ -74,7 +163,7 @@ export default function BankPortal() {
       <PageHeader
         eyebrow="Blood bank portal"
         title="Manage inventory"
-        subtitle="Add, update, and retire stock. Requesters reserve against this live inventory."
+        subtitle="Add, update, and retire stock. Set units to 0 to mark DEPLETED; update units above 0 on a non-expired batch to reactivate as ACTIVE."
       />
 
       {alerts.length > 0 && (
@@ -105,7 +194,16 @@ export default function BankPortal() {
               </SelectInput>
             </Field>
             <Field label="Units">
-              <TextInput type="number" min={1} required value={form.unitsAvailable} onChange={(e) => update("unitsAvailable", e.target.value)} />
+              <TextInput
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                required
+                value={form.unitsAvailable}
+                onKeyDown={onUnitsKeyDown}
+                onChange={(e) => onUnitsChange(e.target.value, (v) => update("unitsAvailable", v))}
+              />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -131,27 +229,40 @@ export default function BankPortal() {
                   <div>
                     <p className="font-medium">{b.bloodGroup} · {b.city}</p>
                     <p className="text-xs text-muted font-mono">{b.status} · exp {b.expiryDate} · #{b.batchId}</p>
+                    {b.status === "DEPLETED" && (
+                      <p className="text-xs text-muted mt-1">Set units above 0 and Update to reactivate (if not expired).</p>
+                    )}
                   </div>
                   <button className="btn-secondary text-sm" onClick={() => handleDelete(b.batchId)}>Delete</button>
                 </div>
                 <div className="flex items-center gap-2 mt-3">
                   <TextInput
                     type="number"
+                    inputMode="numeric"
                     min={0}
-                    defaultValue={b.unitsAvailable}
+                    step={1}
+                    value={unitDrafts[b.batchId] ?? String(b.unitsAvailable)}
                     className="input max-w-[7rem]"
-                    id={`units-${b.batchId}`}
+                    aria-label={`Units for batch ${b.batchId}`}
+                    onKeyDown={onUnitsKeyDown}
+                    onChange={(e) =>
+                      onUnitsChange(e.target.value, (v) => {
+                        setUnitDrafts((prev) => ({ ...prev, [b.batchId]: v }));
+                        setRowErrors((prev) => ({ ...prev, [b.batchId]: "" }));
+                      })
+                    }
                   />
                   <button
+                    type="button"
                     className="btn-primary text-sm"
-                    onClick={() => {
-                      const el = document.getElementById(`units-${b.batchId}`) as HTMLInputElement;
-                      handleUpdate(b.batchId, Number(el.value));
-                    }}
+                    onClick={() => handleUpdate(b.batchId)}
                   >
-                    Update units
+                    {b.status === "DEPLETED" ? "Update / reactivate" : "Update units"}
                   </button>
                 </div>
+                {rowErrors[b.batchId] && (
+                  <p className="text-urgent text-sm mt-2">{rowErrors[b.batchId]}</p>
+                )}
               </div>
             ))}
           </div>

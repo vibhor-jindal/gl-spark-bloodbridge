@@ -1,6 +1,5 @@
 package com.globallogic.bloodbridge.donor.util;
 
-import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -93,9 +92,5 @@ public final class CityClusters {
         String aa = ALIASES.getOrDefault(na, na);
         String bb = ALIASES.getOrDefault(nb, nb);
         return aa.equals(bb);
-    }
-
-    public static List<String> delhiNcr() {
-        return Collections.unmodifiableList(DELHI_NCR);
     }
 }

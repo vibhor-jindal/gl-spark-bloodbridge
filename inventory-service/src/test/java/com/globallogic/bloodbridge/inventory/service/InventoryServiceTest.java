@@ -77,6 +77,35 @@ class InventoryServiceTest {
     }
 
     @Test
+    @DisplayName("Updating units > 0 on a DEPLETED batch restores ACTIVE when not past expiry")
+    void testUpdateStock_Depleted_RestoresActive() {
+        batch.setUnitsAvailable(0);
+        batch.setStatus(BatchStatus.DEPLETED);
+        when(inventoryBatchRepository.findById(1L)).thenReturn(Optional.of(batch));
+        when(inventoryBatchRepository.save(any(InventoryBatch.class))).thenReturn(batch);
+
+        inventoryService.updateStock(1L, new UnitsUpdateRequest(5));
+
+        assertThat(batch.getUnitsAvailable()).isEqualTo(5);
+        assertThat(batch.getStatus()).isEqualTo(BatchStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("Updating units on a past-expiry batch keeps/sets EXPIRED even if units > 0")
+    void testUpdateStock_PastExpiry_StaysExpired() {
+        batch.setStatus(BatchStatus.DEPLETED);
+        batch.setUnitsAvailable(0);
+        batch.setExpiryDate(LocalDate.now().minusDays(1));
+        when(inventoryBatchRepository.findById(1L)).thenReturn(Optional.of(batch));
+        when(inventoryBatchRepository.save(any(InventoryBatch.class))).thenReturn(batch);
+
+        inventoryService.updateStock(1L, new UnitsUpdateRequest(5));
+
+        assertThat(batch.getUnitsAvailable()).isEqualTo(5);
+        assertThat(batch.getStatus()).isEqualTo(BatchStatus.EXPIRED);
+    }
+
+    @Test
     @DisplayName("Updating an unknown batch id throws InventoryNotFoundException")
     void testUpdateStock_NotFound() {
         when(inventoryBatchRepository.findById(99L)).thenReturn(Optional.empty());

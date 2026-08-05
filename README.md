@@ -284,7 +284,7 @@ Fraunces (a distinctive serif), body text in Inter, data/stats in IBM Plex Mono.
 | `/requests/new` | REQUESTER | Raise an emergency blood request |
 | `/requests` | REQUESTER | List of requests they've raised |
 | `/requests/:id` | any authenticated user | Live status, trigger matching, accept/decline, mark fulfilled |
-| `/inventory` | any authenticated user | Blood bank stock: add, search, low-stock alerts |
+| `/bank/portal` | BLOOD_BANK | Blood bank stock: add, search, low-stock alerts |
 | `/admin/dashboard` | ADMIN | Analytics dashboard + CSV export (403 for non-admins, enforced at the Gateway) |
 
 The JWT is stored client-side and attached to every request via an axios interceptor;

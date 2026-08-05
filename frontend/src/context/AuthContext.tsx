@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useState, ReactNode } from "react";
 import { AuthUser } from "../types";
 
 interface AuthContextValue {
@@ -12,14 +12,16 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const STORAGE_KEY = "bloodbridge_auth";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-
-  useEffect(() => {
+  // Hydrate synchronously so ProtectedRoute does not flash-redirect to /login.
+  const [user, setUser] = useState<AuthUser | null>(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      setUser(JSON.parse(raw));
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as AuthUser;
+    } catch {
+      return null;
     }
-  }, []);
+  });
 
   function login(newUser: AuthUser) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
